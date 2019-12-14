@@ -3,6 +3,17 @@ import time
 import logging
 import numpy as np
 import face_recognition
+
+# set allow_growth for tensorflow
+import tensorflow as tf
+oldinit = tf.Session.__init__
+def new_tfinit(session, target='', graph=None, config=None):
+    print("Set config.gpu_options.allow_growth to True")
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    oldinit(session, target, graph, config)
+tf.Session.__init__ = new_tfinit
+
 from mtcnn import MTCNN
 logging.basicConfig(level=logging.DEBUG)
 
