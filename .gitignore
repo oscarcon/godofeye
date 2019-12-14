@@ -1,0 +1,5 @@
+.vscode/
+.backup/
+test_video/
+train_data/
+utils/camera_capture/*.avi
