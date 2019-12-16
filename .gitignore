@@ -3,4 +3,4 @@
 test_video/
 train_data/
 utils/camera_capture/*.avi
-**/__pycache__
+__pycache__/
