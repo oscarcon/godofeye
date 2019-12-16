@@ -107,14 +107,23 @@ class FaceRecognition:
             target_face = face_recognition.face_encodings(frame, known_face_locations=[(y1,x2,y2,x1)])[0]
             match_count = 0
             total_count = 0
-            min_distance = 1000
             predict_label = ['unknown']
-            for model_face_list, label in zip(self.model, self.labels):
-                dis = distance.euclidean(target_face, model_face_list[0])
-                if dis < min_distance:
-                    min_distance = dis
-                    predict_label = [label]
-            print(min_distance)
+            # slow method (check pass)
+            # min_distance = 1
+            # for model_face_list, label in zip(self.model, self.labels):
+            #     dis = distance.euclidean(target_face, model_face_list[0])
+            #     if dis < min_distance:
+            #         min_distance = dis
+            #         predict_label = [label]
+
+            # experimental
+            prepare_list = np.repeat([[target_face]], len(self.model), axis=0)
+            result_list = np.linalg.norm(prepare_list-self.model, axis=2)
+            min_distance = np.min(result_list)
+            # print(min_distance, np.argmin(result_list))
+            # print(prepare_list.shape, self.model.shape, result_list.shape)
+            predict_label = [self.labels[np.argmin(result_list)]]
+            
             if min_distance > threshold:
                 result.append(['unknown'])
             else:
