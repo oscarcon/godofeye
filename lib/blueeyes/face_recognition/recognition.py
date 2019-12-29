@@ -2,6 +2,7 @@ import os
 import cv2
 import sys
 import pdb
+import enum
 import pickle
 # import msgpack
 import numpy as np
@@ -10,19 +11,26 @@ import face_recognition
 from scipy.spatial import distance
 from keras_vggface.utils import preprocess_input
 
+class TrainOption(enum.Enum):
+    RETRAIN = 1
+    UPDATE = 2
+    RUNONLY = 3
+
 class FaceRecognition:
-    def __init__(self, model_dir='', vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', retrain=True):
+    def __init__(self, model_dir='', vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', trainopt=TrainOption.RUNONLY):
         self.dataset = dataset
         self.model_dir = model_dir
         self.vggface = vggface
         if vggface:
             self.vgg_model = keras_vggface.VGGFace(model='resnet50', include_top=False, input_shape=(224,224,3), pooling='avg')
 
-        if not os.path.exists(os.path.join(model_dir, 'model.dat')) or retrain==True:
+        if not os.path.exists(os.path.join(model_dir, 'model.dat')) or trainopt==TrainOption.RETRAIN:
             self.model = []
             self.labels = []
             self._create_model()
-        else:
+        elif trainopt == TrainOption.UPDATE:
+            self._create_model(TrainOption.UPDATE)
+        elif trainopt == TrainOption.RUNONLY:
             self._load_model()
             # with open(model_dir, 'rb') as raw:
             #     model_label = pickle.load(raw)
@@ -35,7 +43,7 @@ class FaceRecognition:
         sample = preprocess_input(sample, version=2)
         yhat = self.vgg_model.predict(sample)
         return yhat
-    def _create_model(self):
+    def _create_model(self, trainopt=TrainOption.RETRAIN):
         # pdb.set_trace()
         sample_per_class = 5
         raw_labels_file = open(os.path.join(self.model_dir, 'labels.dat'), 'w')

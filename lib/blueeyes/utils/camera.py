@@ -7,7 +7,7 @@ from threading import Thread, Lock
 class Camera(Thread):
     MAX_STACK_SIZE = 10
     lock = Lock()
-    def __init__(self, source='rtsp://admin:dvt@12345@192.168.0.100:554/Streaming/Channels/101',frameskip=0):
+    def __init__(self, source, frameskip=0):
         Thread.__init__(self)
         self.cap = cv2.VideoCapture(source)
         self.image_queue = queue.Queue(maxsize=self.MAX_STACK_SIZE)
@@ -28,6 +28,7 @@ class Camera(Thread):
                 # self.image_queue.put_nowait(frame)
         except Exception as e:
             logging.debug(e)
+        #3/5
     # end thread
     # def _get_frame(self):
     #     try:
@@ -50,11 +51,16 @@ class Camera(Thread):
             self.frameskip = value
     def read(self):
         try:
-            for _ in range(self.frameskip - 1):
-                self.image_queue.get()
-            frame = self.image_queue.get()
-            self.image_queue.task_done()
-            return (True, frame)
+            if not self.image_queue.empty():
+                for _ in range(self.frameskip + 1):
+                    if not self.image_queue.empty():
+                        frame = self.image_queue.get()
+                        self.image_queue.task_done()
+                    else:
+                        break
+                return (True, frame)
+            else:
+                return (False, [])
         except Exception as e:
             logging.debug(e)   
             return (False, [])
