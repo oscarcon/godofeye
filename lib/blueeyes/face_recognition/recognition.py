@@ -4,6 +4,7 @@ import sys
 import pdb
 import enum
 import pickle
+import traceback
 # import msgpack
 import numpy as np
 import keras_vggface
@@ -36,6 +37,43 @@ class FaceRecognition:
             #     model_label = pickle.load(raw)
             #     self.model = [[x] for x in model_label['features']]
             #     self.labels = [[x] for x in model_label['labels']]
+    @staticmethod
+    def train_model(train_set_dict, output_model_location='.'):
+        labels = []
+        model = []
+        raw_labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'w')
+        raw_model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
+        for id, img_paths in train_set_dict.items():
+        # pdb.set_trace()
+            labels.append(id)
+            raw_labels_file.write(id + '\n')
+            for img_path in img_paths:
+                # list for putting multiple encoded vector of a same person
+                encoded_vec_list = []
+                try:
+                    img = face_recognition.load_image_file(img_path)
+                    # if vggface:
+                    #     encoded_vec = self._vgg_encoding(img)[0]
+                    if False: # reserver for vggface condition check
+                        pass
+                    else:
+                        bounding_box = face_recognition.face_locations(img)
+                        if isinstance(img, np.ndarray):
+                            known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                        else:
+                            raise TypeError
+                        # encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
+                        encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
+                    print(encoded_vec)
+                    encoded_vec_list.append(encoded_vec)
+                except Exception as e:
+                    print(e)
+            encoded_vec_list = [np.average(encoded_vec_list, axis=0)]
+            model.append(encoded_vec_list)
+        np.save(raw_model_file, model)
+        raw_labels_file.close()
+        raw_model_file.close()
+        
     def _vgg_encoding(self, image):
         sample = cv2.resize(image, (224,224))
         sample = sample.astype('float32')
@@ -108,34 +146,38 @@ class FaceRecognition:
     def _adam_recog(self, frame, boxes, recog_level=1, threshold=0.5):
         result = []
         for (x1, y1, x2, y2) in boxes:
-            # print(x1,y1,x2,y2)
-            # crop = frame[y1:y2, x1:x2, :]
-            # cv2.imshow('debug', crop)
-            # cv2.waitKey(0)
-            target_face = face_recognition.face_encodings(frame, known_face_locations=[(y1,x2,y2,x1)])[0]
-            match_count = 0
-            total_count = 0
-            predict_label = ['unknown']
-            # slow method (check pass)
-            # min_distance = 1
-            # for model_face_list, label in zip(self.model, self.labels):
-            #     dis = distance.euclidean(target_face, model_face_list[0])
-            #     if dis < min_distance:
-            #         min_distance = dis
-            #         predict_label = [label]
+            try:
+                # print(x1,y1,x2,y2)
+                # crop = frame[y1:y2, x1:x2, :]
+                # cv2.imshow('debug', crop)
+                # cv2.waitKey(0)
+                target_face = face_recognition.face_encodings(frame, known_face_locations=[(y1,x2,y2,x1)])[0]
+                match_count = 0
+                total_count = 0
+                predict_label = ['unknown']
+                # slow method (check pass)
+                # min_distance = 1
+                # for model_face_list, label in zip(self.model, self.labels):
+                #     dis = distance.euclidean(target_face, model_face_list[0])
+                #     if dis < min_distance:
+                #         min_distance = dis
+                #         predict_label = [label]
 
-            # experimental
-            prepare_list = np.repeat([[target_face]], len(self.model), axis=0)
-            result_list = np.linalg.norm(prepare_list-self.model, axis=2)
-            min_distance = np.min(result_list)
-            # print(min_distance, np.argmin(result_list))
-            # print(prepare_list.shape, self.model.shape, result_list.shape)
-            predict_label = [self.labels[np.argmin(result_list)]]
-            
-            if min_distance > threshold:
-                result.append(['unknown'])
-            else:
-                result.append(predict_label)
+                # experimental
+                prepare_list = np.repeat([[target_face]], len(self.model), axis=0)
+                result_list = np.linalg.norm(prepare_list-self.model, axis=2)
+                min_distance = np.min(result_list)
+                # print(min_distance, np.argmin(result_list))
+                # print(prepare_list.shape, self.model.shape, result_list.shape)
+                predict_label = [self.labels[np.argmin(result_list)]]
+                
+                if min_distance > threshold:
+                    result.append(['unknown'])
+                else:
+                    result.append(predict_label)
+            except:
+                print(result_list)
+                traceback.print_exc()
         return result
         #     for model_face_list, label in zip(self.model, self.labels):
         #         if match_count > 0:
