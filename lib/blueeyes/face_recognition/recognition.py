@@ -5,7 +5,7 @@ import pdb
 import enum
 import pickle
 import traceback
-# import msgpack
+import threading
 import numpy as np
 import keras_vggface
 import face_recognition
@@ -21,13 +21,13 @@ class TrainOption(enum.Enum):
     RUNONLY = 3
 
 class FaceRecognition:
+    FRAME_COUNT_TO_DECIDE = 10
     def __init__(self, model_dir='', use_knn=False, knn_opts=(7, 'euclidean'), vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', trainopt=TrainOption.RUNONLY):
         self.dataset = dataset
         self.model_dir = model_dir
         self.vggface = vggface
         self.use_knn = use_knn
-        if use_knn:
-            self.knn = pickle.load(open(model_dir + '/knn_clf.pkl', 'rb'))
+        self.result_buffer = []
         if vggface:
             self.vgg_model = keras_vggface.VGGFace(model='resnet50', include_top=False, input_shape=(224,224,3), pooling='avg')
         if not os.path.exists(os.path.join(model_dir, 'model.dat')) or trainopt==TrainOption.RETRAIN:
@@ -37,11 +37,17 @@ class FaceRecognition:
         elif trainopt == TrainOption.UPDATE:
             self._create_model(TrainOption.UPDATE)
         elif trainopt == TrainOption.RUNONLY:
-            self._load_model()
+            if self.use_knn == True:
+                self._load_model(model_dir=model_dir)
+            else:
+                self._load_model()
             # with open(model_dir, 'rb') as raw:
             #     model_label = pickle.load(raw)
             #     self.model = [[x] for x in model_label['features']]
             #     self.labels = [[x] for x in model_label['labels']]
+    def config_postprocessing(self, **kwargs):
+        FRAME_COUNT_TO_DECIDE = kwargs['FRAME_COUNT_TO_DECIDE']
+
     @staticmethod
     def train_knn(train_set_dict, K=7, metric='euclidean', output_model_location='.'):
         knn = KNeighborsClassifier(n_neighbors=K, metric=metric)
@@ -154,11 +160,14 @@ class FaceRecognition:
                 self.model.append(encoded_vec_list)
         np.save(raw_model_file, self.model)
 
-    def _load_model(self):
-        with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as raw_model_file:
-            self.model = np.load(raw_model_file, allow_pickle=True)
-        with open(os.path.join(self.model_dir, 'labels.dat'), 'r') as raw_labels_file:
-            self.labels = raw_labels_file.readlines()
+    def _load_model(self, **kwargs):
+        if self.use_knn == True:
+            self.knn = pickle.load(open(kwargs['model_dir'] + '/knn_clf.pkl', 'rb'))
+        else:
+            with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as raw_model_file:
+                self.model = np.load(raw_model_file, allow_pickle=True)
+            with open(os.path.join(self.model_dir, 'labels.dat'), 'r') as raw_labels_file:
+                self.labels = raw_labels_file.readlines()
     
     def _knn_recog(self, frame, boxes, **kwargs):
         result = []
@@ -267,5 +276,68 @@ class FaceRecognition:
         else:
             result = self._adam_recog(frame, boxes, **kwargs)
         return result 
+
+    def put_to_result_buffer(self, boxes, labels):
+        num_person = len(boxes)
+        # Add raw data to buffer
+        if len(self.result_buffer) >= self.FRAME_COUNT_TO_DECIDE:
+            self.result_buffer.pop(0)
+        if num_person == 0:
+            # result_buffer.append([])
+            pass
+        else: # more than 1 person
+            self.result_buffer.append(labels)
+        self._event.set()
+
+    def postprocessing(self, event, callback):
+        try:
+            while True:
+                # if num_person == 2:
+                #     print(labels)
+                #     while True:
+                #         pass
+                event.wait()
+                num_result = 0
+                # Check result buffer to decide what to print
+                id_count = {}
+                # Wait for the buffer to fill up and loop through buffer
+                if len(self.result_buffer) >= self.FRAME_COUNT_TO_DECIDE:
+                    deep = max([len(lst) for lst in self.result_buffer])
+                    for row in range(deep):
+                        for col in range(self.FRAME_COUNT_TO_DECIDE):
+                            try:
+                                ID = self.result_buffer[col][row][0]
+                                if ID in id_count.keys():
+                                    id_count[ID] += 1
+                                else:
+                                    id_count[ID] = 1
+                            except IndexError:
+                                break
+                            else:
+                                num_result += 1
+
+                num_id = len(id_count.keys())
+                if num_id < num_result:
+                    num_result = num_id
+                # print(result_buffer)
+                # print(num_result)
+                # print(id_count)
+                result_id = []
+                if id_count:
+                    frequency_ids = [(k,v) for k, v in sorted(id_count.items(), key=lambda item: item[1])]
+                    for i in range(num_result):
+                        if frequency_ids[i][1] > int(0.6*self.FRAME_COUNT_TO_DECIDE):
+                            result_id.append(frequency_ids[i][0].replace('\n', ''))
+                if len(result_id) > 0:
+                    callback(result_id)
+                event.clear()
+        except:
+            traceback.print_exc()
+
+    def on_final_decision(self, callback):
+        self._event = threading.Event()
+        self._thread = threading.Thread(target=self.postprocessing, args=(self._event, callback))
+        self._thread.start()
+
 if __name__ == '__main__':
     recog = Recognition()

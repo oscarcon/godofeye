@@ -63,7 +63,7 @@ while True:
                 x1, y1, x2, y2 = box
                 hsv = cv2.cvtColor(frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
                 brightness = cv2.mean(hsv)[2]
-                if 100 < brightness < 200:
+                if brightness < 100:
                     temp_boxes.append(box)
             boxes = temp_boxes
                     

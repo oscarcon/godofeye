@@ -15,7 +15,6 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
-sys.path.append('/home/huy/face_recog/yoloface')
 from yolo.yolo import YOLO
 
 from mtcnn import MTCNN
