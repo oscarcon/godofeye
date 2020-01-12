@@ -12,19 +12,24 @@ import face_recognition
 from scipy.spatial import distance
 from keras_vggface.utils import preprocess_input
 
+# KNN classifier
+from sklearn.neighbors import KNeighborsClassifier
+
 class TrainOption(enum.Enum):
     RETRAIN = 1
     UPDATE = 2
     RUNONLY = 3
 
 class FaceRecognition:
-    def __init__(self, model_dir='', vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', trainopt=TrainOption.RUNONLY):
+    def __init__(self, model_dir='', use_knn=False, knn_opts=(7, 'euclidean'), vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', trainopt=TrainOption.RUNONLY):
         self.dataset = dataset
         self.model_dir = model_dir
         self.vggface = vggface
+        self.use_knn = use_knn
+        if use_knn:
+            self.knn = pickle.load(open(model_dir + '/knn_clf.pkl', 'rb'))
         if vggface:
             self.vgg_model = keras_vggface.VGGFace(model='resnet50', include_top=False, input_shape=(224,224,3), pooling='avg')
-
         if not os.path.exists(os.path.join(model_dir, 'model.dat')) or trainopt==TrainOption.RETRAIN:
             self.model = []
             self.labels = []
@@ -37,6 +42,38 @@ class FaceRecognition:
             #     model_label = pickle.load(raw)
             #     self.model = [[x] for x in model_label['features']]
             #     self.labels = [[x] for x in model_label['labels']]
+    @staticmethod
+    def train_knn(train_set_dict, K=7, metric='euclidean', output_model_location='.'):
+        knn = KNeighborsClassifier(n_neighbors=K, metric=metric)
+        model_pkl = open(os.path.join(output_model_location, 'knn_clf.pkl'), 'wb')
+        features = []
+        labels = []
+        for id, img_paths in train_set_dict.items():
+        # pdb.set_trace()
+            for img_path in img_paths:
+                labels.append(id)
+                try:
+                    img = face_recognition.load_image_file(img_path)
+                    # if vggface:
+                    #     encoded_vec = self._vgg_encoding(img)[0]
+                    if False: # reserver for vggface condition check
+                        pass
+                    else:
+                        # bounding_box = face_recognition.face_locations(img)
+                        # encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
+                        if isinstance(img, np.ndarray):
+                            known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                        else:
+                            raise TypeError
+                        encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
+                    print(encoded_vec)
+                    features.append(encoded_vec)
+                except Exception as e:
+                    print(e)
+        knn.fit(features, labels)
+        print(knn)
+        pickle.dump(knn, model_pkl)
+
     @staticmethod
     def train_model(train_set_dict, output_model_location='.'):
         labels = []
@@ -122,6 +159,26 @@ class FaceRecognition:
             self.model = np.load(raw_model_file, allow_pickle=True)
         with open(os.path.join(self.model_dir, 'labels.dat'), 'r') as raw_labels_file:
             self.labels = raw_labels_file.readlines()
+    
+    def _knn_recog(self, frame, boxes, **kwargs):
+        result = []
+        for (x1, y1, x2, y2) in boxes:
+            try:
+                # print(x1,y1,x2,y2)
+                # crop = frame[y1:y2, x1:x2, :]
+                # cv2.imshow('debug', crop)
+                # cv2.waitKey(0)
+                target_face = face_recognition.face_encodings(frame, known_face_locations=[(y1,x2,y2,x1)])[0]
+                probas = self.knn.predict_proba([target_face])
+                if np.max(probas) >= kwargs['threshold']:
+                    label = self.knn.classes_[np.argmax(probas)]
+                    result.append([label])
+                else:
+                    result.append(['unknown'])
+            except:
+                traceback.print_exc()
+        return result
+            
     def _vgg_recog(self, frame, boxes, recog_level=1, threshold=0.5):
         result = []
         for (x1, y1, x2, y2) in boxes:
@@ -203,7 +260,9 @@ class FaceRecognition:
         #         result.append(['unknown'])
         # return result
     def recog(self, frame, boxes, **kwargs):
-        if self.vggface:
+        if self.use_knn:
+            result = self._knn_recog(frame, boxes, **kwargs)
+        elif self.vggface:
             result = self._vgg_recog(frame, boxes, **kwargs)
         else:
             result = self._adam_recog(frame, boxes, **kwargs)

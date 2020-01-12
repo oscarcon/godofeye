@@ -1,3 +1,4 @@
+import sys
 import cv2
 import time
 import logging
@@ -14,12 +15,17 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
+sys.path.append('/home/huy/face_recog/yoloface')
+from yolo.yolo import YOLO
+
 from mtcnn import MTCNN
 logging.basicConfig(level=logging.DEBUG)
 
 class FaceDetector:
     def __init__(self, type, **kwargs):
         self.type = type
+        if self.type == 'yolo':
+            self.face_detector = YOLO(img_size=kwargs['model_img_size'])
         if self.type == 'haar':
             self.face_detector = cv2.CascadeClassifier('cascade_model/cascade_ignore_shirt.xml')
         elif self.type == 'mtcnn':
@@ -29,7 +35,10 @@ class FaceDetector:
         frame: input image
         return: 
         '''
-        if self.type == 'hog':
+        if self.type == 'yolo':
+            boxes = self.face_detector.detect(frame)
+            boxes = [(y1,x1,y2,x2) for x1,y1,x2,y2 in boxes]
+        elif self.type == 'hog':
             boxes = face_recognition.face_locations(frame, number_of_times_to_upsample=1)
             # boxes format: css (top, right, bottom, left)
             boxes = [(y1, x1, y2, x2) for x1, y1, x2, y2 in boxes]
