@@ -12,8 +12,8 @@ from blueeyes.face_recognition import FaceDetector, FaceRecognition
 from blueeyes.utils import Camera
 
 # cap = Camera(source='/home/huy/Downloads/AnhDuy.mp4', frameskip=5)
-cap = Camera(source='/home/blueeyes1/Downloads/9h50.mp4', frameskip=0)
-# cap = Camera(source='rtsp://admin:be123456@192.168.1.15:554/Streaming/Channels/101', frameskip=5)
+# cap = Camera(source='/home/blueeyes1/Downloads/9h50.mp4', frameskip=0)
+cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 
 # cap = Camera(source=0, frameskip=15)
 # cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
@@ -27,8 +27,8 @@ cap.start()
 FRAME_COUNT_TO_DECIDE = 5
 
 HOME = os.environ['HOME']
-detector = FaceDetector('mtcnn', min_face_size=60)
-# detector = FaceDetector('yolo', model_img_size=(320,320))
+# detector = FaceDetector('mtcnn', min_face_size=60)
+detector = FaceDetector('yolo', model_img_size=(128,128))
 # detector = YOLO()
 recog = FaceRecognition(
     # model_dir='/home/huy/code/godofeye/models', 
@@ -45,6 +45,9 @@ def process_id(result_id):
 recog.on_final_decision(process_id)
 
 execution_time = {}
+
+if not cap.cap.isOpened():
+    print('Error in opening camera')
 
 while True:
     try:
@@ -63,7 +66,7 @@ while True:
                 x1, y1, x2, y2 = box
                 hsv = cv2.cvtColor(frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
                 brightness = cv2.mean(hsv)[2]
-                if 100 < brightness < 200:
+                if 75 < brightness < 225:
                     temp_boxes.append(box)
             boxes = temp_boxes
                     
@@ -86,7 +89,6 @@ while True:
             cv2.imshow("frame", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-
     except KeyboardInterrupt:
         break    
 

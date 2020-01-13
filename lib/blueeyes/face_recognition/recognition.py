@@ -22,25 +22,24 @@ class TrainOption(enum.Enum):
 
 class FaceRecognition:
     FRAME_COUNT_TO_DECIDE = 10
-    def __init__(self, model_dir='', use_knn=False, knn_opts=(7, 'euclidean'), vggface=False ,dataset='/home/huy/code/godofeye/train_data/dataset_be_ok', trainopt=TrainOption.RUNONLY):
-        self.dataset = dataset
+    def __init__(self, model_dir='', use_knn=False, knn_opts=(7, 'euclidean', 'distance'), vggface=False , trainopt=TrainOption.RUNONLY):
         self.model_dir = model_dir
         self.vggface = vggface
         self.use_knn = use_knn
         self.result_buffer = []
         if vggface:
             self.vgg_model = keras_vggface.VGGFace(model='resnet50', include_top=False, input_shape=(224,224,3), pooling='avg')
-        if not os.path.exists(os.path.join(model_dir, 'model.dat')) or trainopt==TrainOption.RETRAIN:
-            self.model = []
-            self.labels = []
-            self._create_model()
-        elif trainopt == TrainOption.UPDATE:
-            self._create_model(TrainOption.UPDATE)
-        elif trainopt == TrainOption.RUNONLY:
-            if self.use_knn == True:
-                self._load_model(model_dir=model_dir)
-            else:
-                self._load_model()
+        # if not os.path.exists(os.path.join(model_dir, 'model.dat')) or trainopt==TrainOption.RETRAIN:
+        #     self.model = []
+        #     self.labels = []
+        #     self._create_model()
+        # elif trainopt == TrainOption.UPDATE:
+        #     self._create_model(TrainOption.UPDATE)
+        # elif trainopt == TrainOption.RUNONLY:
+        if self.use_knn == True:
+            self._load_model(model_dir=model_dir)
+        else:
+            self._load_model(model_dir=model_dir)
             # with open(model_dir, 'rb') as raw:
             #     model_label = pickle.load(raw)
             #     self.model = [[x] for x in model_label['features']]
@@ -48,16 +47,20 @@ class FaceRecognition:
     def config_postprocessing(self, **kwargs):
         FRAME_COUNT_TO_DECIDE = kwargs['FRAME_COUNT_TO_DECIDE']
 
-    @staticmethod
-    def train_knn(train_set_dict, K=7, metric='euclidean', output_model_location='.'):
-        knn = KNeighborsClassifier(n_neighbors=K, metric=metric)
-        model_pkl = open(os.path.join(output_model_location, 'knn_clf.pkl'), 'wb')
-        features = []
+    @classmethod
+    def create_train_set(cls, train_set_dict, detect_face=False, output_model_location='.'):
+        # create model dir is the dir is not exist
+        if not os.path.exists(output_model_location):
+            os.makedirs(output_model_location)
         labels = []
+        features = []
+        labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'w')
+        features_file = open(os.path.join(output_model_location, 'features.dat'), 'wb')
         for id, img_paths in train_set_dict.items():
         # pdb.set_trace()
             for img_path in img_paths:
                 labels.append(id)
+                labels_file.write(id + '\n')
                 try:
                     img = face_recognition.load_image_file(img_path)
                     # if vggface:
@@ -65,57 +68,97 @@ class FaceRecognition:
                     if False: # reserver for vggface condition check
                         pass
                     else:
-                        # bounding_box = face_recognition.face_locations(img)
-                        # encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
-                        if isinstance(img, np.ndarray):
-                            known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                        if detect_face:
+                            bounding_box = face_recognition.face_locations(img)
+                            encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
                         else:
-                            raise TypeError
-                        encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
+                            if isinstance(img, np.ndarray):
+                                known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                            else:
+                                raise TypeError
+                            encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
                     print(encoded_vec)
                     features.append(encoded_vec)
                 except Exception as e:
                     print(e)
+        np.save(features_file, features)
+        labels_file.close()
+        features_file.close()
+        return features, labels
+
+    @classmethod
+    def train_knn(cls, train_set_dict, K=7, metric='euclidean', weights='distance', output_model_location='.'):
+        features, labels = cls.create_train_set(train_set_dict, output_model_location=output_model_location)
+        knn = KNeighborsClassifier(n_neighbors=K, metric=metric, weights=weights)
+        model_pkl = open(os.path.join(output_model_location, 'knn_clf.pkl'), 'wb')
         knn.fit(features, labels)
         print(knn)
         pickle.dump(knn, model_pkl)
 
-    @staticmethod
-    def train_model(train_set_dict, output_model_location='.'):
+    @classmethod
+    def train_simple_model(cls, train_set_dict, detect_face=False, output_model_location='.'):
+        features = []
         labels = []
         model = []
-        raw_labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'w')
-        raw_model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
+        classes = []
+        features_file = open(os.path.join(output_model_location, 'features.dat'), 'wb')
+        labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'w')
+        model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
+        classes_file = open(os.path.join(output_model_location, 'classes.dat'), 'w')
         for id, img_paths in train_set_dict.items():
         # pdb.set_trace()
-            labels.append(id)
-            raw_labels_file.write(id + '\n')
+            classes.append(id)
+            classes_file.write(id + '\n')
+            # list for putting multiple encoded vector of a same person
+            encoded_vec_list = []
             for img_path in img_paths:
-                # list for putting multiple encoded vector of a same person
-                encoded_vec_list = []
                 try:
+                    labels.append(id)
+                    labels_file.write(id + '\n')
                     img = face_recognition.load_image_file(img_path)
                     # if vggface:
                     #     encoded_vec = self._vgg_encoding(img)[0]
                     if False: # reserver for vggface condition check
                         pass
                     else:
-                        bounding_box = face_recognition.face_locations(img)
-                        if isinstance(img, np.ndarray):
-                            known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                        if detect_face:
+                            bounding_box = face_recognition.face_locations(img)
+                            encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
                         else:
-                            raise TypeError
-                        # encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
-                        encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
-                    print(encoded_vec)
+                            if isinstance(img, np.ndarray):
+                                known_face_box = [(0, img.shape[1], img.shape[0], 0)]
+                            else:
+                                raise TypeError
+                            encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
+                            print(encoded_vec)
                     encoded_vec_list.append(encoded_vec)
                 except Exception as e:
                     print(e)
             encoded_vec_list = [np.average(encoded_vec_list, axis=0)]
             model.append(encoded_vec_list)
-        np.save(raw_model_file, model)
-        raw_labels_file.close()
-        raw_model_file.close()
+        np.save(model_file, model)
+        np.save(features_file, features)
+        labels_file.close()
+        model_file.close()
+        features_file.close()
+        labels_file.close()
+        # features, labels = cls.create_train_set(train_set_dict, output_model_location=output_model_location)
+        # classes_file = open(os.path.join(output_model_location, 'classes.dat'), 'w')
+        # model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
+
+        # classes = list(np.unique(labels))
+        # classes_file.write('\n'.join(classes))
+        # classes_file.close()
+
+        # for class_name in classes:
+        #     for 
+        #     mean_vec = np.mean([features[label.index(i)] for label in labels if label == class_name], axis=0)
+        #     print(mean_vec)
+        #     model.append(mean_vec)
+
+        # np.save(model_file, model)
+        # model_file.close()
+        # return model, classes
         
     def _vgg_encoding(self, image):
         sample = cv2.resize(image, (224,224))
@@ -124,50 +167,15 @@ class FaceRecognition:
         sample = preprocess_input(sample, version=2)
         yhat = self.vgg_model.predict(sample)
         return yhat
-    def _create_model(self, trainopt=TrainOption.RETRAIN):
-        # pdb.set_trace()
-        sample_per_class = 5
-        raw_labels_file = open(os.path.join(self.model_dir, 'labels.dat'), 'w')
-        raw_model_file = open(os.path.join(self.model_dir, 'model.dat'), 'wb')
-        for entry in os.scandir(self.dataset):
-            if entry.is_dir(): 
-                self.labels.append(entry.name)
-                raw_labels_file.write(entry.name + '\n')
-                # list for putting multiple encoded vector of a same person
-                encoded_vec_list = []
-                sample_count = -1
-                for path in os.listdir(entry.path):
-                    sample_count += 1
-                    if sample_count == sample_per_class:
-                        break
-                    try:
-                        img = face_recognition.load_image_file(os.path.join(entry.path,path))
-                        if self.vggface:
-                            encoded_vec = self._vgg_encoding(img)[0]
-                        else:
-                            bounding_box = face_recognition.face_locations(img)
-                            if isinstance(img, np.ndarray):
-                                known_face_box = [(0, img.shape[1], img.shape[0], 0)]
-                            else:
-                                raise TypeError
-                            # encoded_vec = face_recognition.face_encodings(img, bounding_box)[0]
-                            encoded_vec = face_recognition.face_encodings(img, known_face_locations=known_face_box)[0]
-                        print(encoded_vec)
-                        encoded_vec_list.append(encoded_vec)
-                    except Exception as e:
-                        print(e)
-                encoded_vec_list = [np.average(encoded_vec_list, axis=0)]
-                self.model.append(encoded_vec_list)
-        np.save(raw_model_file, self.model)
 
     def _load_model(self, **kwargs):
         if self.use_knn == True:
-            self.knn = pickle.load(open(kwargs['model_dir'] + '/knn_clf.pkl', 'rb'))
+            self.knn = pickle.load(open(self.model_dir + '/knn_clf.pkl', 'rb'))
         else:
-            with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as raw_model_file:
-                self.model = np.load(raw_model_file, allow_pickle=True)
-            with open(os.path.join(self.model_dir, 'labels.dat'), 'r') as raw_labels_file:
-                self.labels = raw_labels_file.readlines()
+            with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as model_file:
+                self.model = np.load(model_file, allow_pickle=True)
+            with open(os.path.join(self.model_dir, 'classes.dat'), 'r') as classes_file:
+                self.classes = classes_file.readlines()
     
     def _knn_recog(self, frame, boxes, **kwargs):
         result = []
@@ -235,7 +243,7 @@ class FaceRecognition:
                 min_distance = np.min(result_list)
                 # print(min_distance, np.argmin(result_list))
                 # print(prepare_list.shape, self.model.shape, result_list.shape)
-                predict_label = [self.labels[np.argmin(result_list)]]
+                predict_label = [self.classes[np.argmin(result_list)]]
                 
                 if min_distance > threshold:
                     result.append(['unknown'])
