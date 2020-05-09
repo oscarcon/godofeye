@@ -1,9 +1,12 @@
+import os
 import sys
 import cv2
 import time
 import logging
 import numpy as np
 import face_recognition
+
+sys.path.append(os.path.abspath(os.path.join(__file__, os.path.pardir)))
 
 # set allow_growth for tensorflow
 import tensorflow as tf
@@ -17,23 +20,48 @@ tf.Session.__init__ = new_tfinit
 
 from yolo.yolo import YOLO
 
-from mtcnn import MTCNN
 logging.basicConfig(level=logging.DEBUG)
 
+
 class FaceDetector:
-    def __init__(self, type, **kwargs):
+    def __init__(self, type, scale=1, **kwargs):
         self.type = type
+        self.scale = scale
         if self.type == 'yolo':
             self.face_detector = YOLO(img_size=kwargs['model_img_size'])
         if self.type == 'haar':
             self.face_detector = cv2.CascadeClassifier('cascade_model/cascade_ignore_shirt.xml')
         elif self.type == 'mtcnn':
+            from mtcnn import MTCNN
+            kwargs['min_face_size'] //= self.scale
+            self.min_face_size = kwargs['min_face_size']
             self.face_detector = MTCNN(**kwargs)
-    def detect(self, frame):
-        '''
-        frame: input image
-        return: 
-        '''
+        elif self.type == 'mtcnn_torch':
+            import mtcnn_torch as mtcnn
+            pnet, rnet, onet = mtcnn.get_net_caffe('mtcnn_torch/model')
+            self.face_detector = mtcnn.FaceDetector(pnet, rnet, onet, device='cuda:0')
+
+    def detect(self, frame, size_ranges=[], brightness_ranges=[], filter=True):
+        def is_in_size_ranges(box):
+            left, top, right, bottom = box
+            width = right - left
+            height = bottom - top
+            for wmin,hmin,wmax,hmax in size_ranges:
+                if wmin <= width <= wmax and hmin <= height <= hmax:
+                    return 
+            return False
+        def is_in_brightness_ranges(box):
+            left, top, right, bottom = box
+            for brightness_range in brightness_ranges:
+                vmin,vmax = brightness_range 
+                hsv = cv2.cvtColor(frame[top:bottom,left:right,:], cv2.COLOR_BGR2HSV)
+                brightness = cv2.mean(hsv)[2]
+                if vmin <= brightness <= vmax:
+                    return True
+            return False
+
+        frame = cv2.resize(frame, (0,0), fx=1/self.scale, fy=1/self.scale, interpolation=cv2.INTER_CUBIC)
+
         if self.type == 'yolo':
             boxes = self.face_detector.detect(frame)
             boxes = [(y1,x1,y2,x2) for x1,y1,x2,y2 in boxes]
@@ -50,8 +78,19 @@ class FaceDetector:
             for face in self.face_detector.detect_faces(frame):
                 boxes.append(face['box'])
             boxes = [(x,y,x+w,y+h) for x,y,w,h in boxes]
-        self.boxes = boxes
+        elif self.type == 'mtcnn_torch':
+            boxes = []
+            _boxes, landmarks = detector.detect(img)
+            for box in _boxes:
+                boxes.append(tuple([int(box[i]) for i in range(len(box))]))
+        self.boxes = [tuple(map(lambda v: v*self.scale,box)) for box in boxes]
+
+        if filter:
+            boxes = [box for box in boxes if is_in_size_ranges(box)]
+            boxes = [box for box in boxes if is_in_brightness_ranges(box)]
+        
         return self.boxes
+
     def draw_bounding_box(self, frame, boxes):
         for box in boxes:
             if len(box) > 0:
