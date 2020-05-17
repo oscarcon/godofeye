@@ -19,7 +19,6 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
-from yolo.yolo import YOLO
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -29,6 +28,7 @@ class FaceDetector:
         self.type = type
         self.scale = scale
         if self.type == 'yolo':
+            from yolo.yolo import YOLO
             self.face_detector = YOLO(img_size=kwargs['model_img_size'])
         if self.type == 'haar':
             self.face_detector = cv2.CascadeClassifier('cascade_model/cascade_ignore_shirt.xml')
