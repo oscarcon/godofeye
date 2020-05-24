@@ -11,14 +11,6 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.path.pardir)))
 # set allow_growth for tensorflow
 import tensorflow.compat.v1 as tf
 import tensorflow.keras as keras
-oldinit = tf.Session.__init__
-def new_tfinit(session, target='', graph=None, config=None):
-    print("Set config.gpu_options.allow_growth to True")
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    oldinit(session, target, graph, config)
-tf.Session.__init__ = new_tfinit
-
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -60,6 +52,8 @@ class FaceDetector:
                 if vmin <= brightness <= vmax:
                     return True
             return False
+        def zero_negative(box):
+            return tuple([b if b > 0 else -b for b in box])
 
         frame = cv2.resize(frame, (0,0), fx=1/self.scale, fy=1/self.scale, interpolation=cv2.INTER_CUBIC)
 
@@ -89,7 +83,8 @@ class FaceDetector:
         if filter:
             boxes = [box for box in boxes if is_in_size_ranges(box)]
             boxes = [box for box in boxes if is_in_brightness_ranges(box)]
-        
+            # zero negative value in box
+            boxes = list(map(zero_negative, boxes))
         return self.boxes
 
     def draw_bounding_box(self, frame, boxes):

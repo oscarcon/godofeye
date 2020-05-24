@@ -8,18 +8,32 @@ from collections import namedtuple
 sys.path.append('../lib')
 sys.path.append('../lib/yoloface')
 
+import tensorflow.compat.v1 as tf
+import tensorflow.keras as keras
+oldinit = tf.Session.__init__
+def new_tfinit(session, target='', graph=None, config=None):
+    print("Set config.gpu_options.allow_growth to True")
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    oldinit(session, target, graph, config)
+tf.Session.__init__ = new_tfinit
+
 from blueeyes.face_recognition import FaceDetector, FaceRecognition
 from blueeyes.utils import Camera
+
+# mqtt for communication between modules
+import paho.mqtt.client as mqtt
+
+mqtt_client = mqtt.Client()
+mqtt_client.connect('localhost', 1883, 60)
 
 # cap = Camera(source='/home/huy/Downloads/AnhDuy.mp4', frameskip=5)
 # cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
-
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
-cap = Camera(source='rtsp://Admin:12345@10.42.0.235:554/Streaming/Channels/101', frameskip=5)
+# cap = Camera(source='rtsp://Admin:12345@10.42.0.235:554/Streaming/Channels/101', frameskip=5)
+cap = Camera(source=0, frameskip=15)
 
-
-# cap = Camera(source=0, frameskip=15)
 # cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
 # cap = cv2.VideoCapture('/home/huy/Downloads/dataV13_group.avi')
 # cap.set(cv2.CAP_PROP_FPS, 10)
@@ -41,10 +55,12 @@ detector = FaceDetector('mtcnn', min_face_size=60)
 # )
 
 recog = FaceRecognition(
-    classifier_method='nn'
+    model_dir='/home/huy/face_recog/models/knn',
+    classifier_method='knn'
 )
 
 def process_id(result_id):
+    mqtt_client.publish('/ids', result_id[0])
     print(result_id)
 
 recog.on_final_decision(process_id)
@@ -56,6 +72,7 @@ if not cap.cap.isOpened():
 
 while True:
     try:
+        mqtt_client.loop_start()
         ret, frame = cap.read()
         if ret:
             frame = cv2.resize(frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_AREA)
@@ -68,11 +85,17 @@ while True:
             # ignore too bright faces
             temp_boxes = []
             for box in boxes:
-                x1, y1, x2, y2 = box
-                hsv = cv2.cvtColor(frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
-                brightness = cv2.mean(hsv)[2]
-                if 75 < brightness < 225:
-                    temp_boxes.append(box)
+                try:
+                    x1, y1, x2, y2 = box
+                    hsv = cv2.cvtColor(frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
+                    brightness = cv2.mean(hsv)[2]
+                    if 75 < brightness < 225:
+                        temp_boxes.append(box)
+                except:
+                    print(box)
+                    print(frame.shape)
+                    input()
+
             boxes = temp_boxes
                     
             detector.debug(frame)

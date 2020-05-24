@@ -116,7 +116,7 @@ class FaceRecognition:
             self._load_model(model_dir=model_dir)
         elif self.classifier_method == 'nn':
             self._load_model()
-        elif self.classifier_method == 'distance':
+        elif self.classifier_method == 'euclid':
             self._load_model(model_dir=model_dir)
         else:
             print('Classifier not found!')
@@ -166,8 +166,7 @@ class FaceRecognition:
             MODEL_DIR = '/home/huy/face_recog/models/nn/'
             self.model = load_model(MODEL_DIR + 'mobilenetv2_checkpoint_60-0.96.hdf5')
             self.classes = np.load(MODEL_DIR + 'classes.npy')
-
-        else:
+        elif self.classifier_method == 'euclid':
             with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as model_file:
                 self.model = np.load(model_file, allow_pickle=True)
             with open(os.path.join(self.model_dir, 'classes.dat'), 'r') as classes_file:
@@ -364,6 +363,9 @@ class FaceRecognition:
 class ModelTraining:
     def __init__(self, feature_extractor):
         self.feature_extractor = feature_extractor
+    
+    def _batch_process(img_paths, ID):
+        pass
     
     def create_train_set(self, train_set_dict, detect_face=False, output_model_location='.'):
         # create model dir is the dir is not exist
