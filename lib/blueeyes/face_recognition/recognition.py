@@ -4,6 +4,7 @@ import sys
 import pdb
 import enum
 import pickle
+import joblib
 import traceback
 import threading
 import numpy as np
@@ -97,7 +98,7 @@ class FeatureExtractor:
 
 class FaceRecognition:
     FRAME_COUNT_TO_DECIDE = 10
-    def __init__(self, model_dir='', feature_extractor_type='face_recognition', knn_opts=(7, 'euclidean', 'distance') , classifier_method='distance', trainopt=TrainOption.RUNONLY):
+    def __init__(self, model_dir='', model_path='', feature_extractor_type='face_recognition', knn_opts=(7, 'euclidean', 'distance') , classifier_method='distance', trainopt=TrainOption.RUNONLY):
         self.target_size = 128
         self.model_dir = model_dir
         self.result_buffer = []
@@ -116,8 +117,12 @@ class FaceRecognition:
             self._load_model(model_dir=model_dir)
         elif self.classifier_method == 'nn':
             self._load_model()
+        elif self.classifier_method == 'kmeans':
+            pass
         elif self.classifier_method == 'euclid':
             self._load_model(model_dir=model_dir)
+        elif self.classifier_method == 'svm':
+            self._load_model(model_path=model_path)
         else:
             print('Classifier not found!')
             raise NameError
@@ -146,14 +151,23 @@ class FaceRecognition:
 
     # preprocess image before feeding to the network
     def preprocess_image(self, x):
-        # Resize the image to have the shape of (96,96)
+        # Resize the image to have the shape of (128, 128)
         x = resize(x, (self.target_size, self.target_size),
             mode='constant',
             anti_aliasing=False)
         x = x.astype(np.float32) / 255
         x = np.expand_dims(x, axis=0)
         return x
-
+    
+    def preprocess_image_(self, img):
+        y_scale = self.target_size / img.shape[0]
+        img = cv2.resize(img, None, fx=y_scale, fy=y_scale)
+        black = np.zeros((self.target_size, self.target_size, 3), dtype='uint8')
+        y1 = (self.target_size - x.shape[1]) // 2
+        y2 = self.target_size - y1
+        black[:, y1:y2, :] = img[:,:,:]
+        return black
+    
     def face_roi(self, frame, box):
         (x1, y1, x2, y2) = box
         return frame[y1:y2, x1:x2]
@@ -169,9 +183,10 @@ class FaceRecognition:
         elif self.classifier_method == 'euclid':
             with open(os.path.join(self.model_dir, 'model.dat'), 'rb') as model_file:
                 self.model = np.load(model_file, allow_pickle=True)
-            with open(os.path.join(self.model_dir, 'classes.dat'), 'r') as classes_file:
-                self.classes = classes_file.readlines()
-    
+            with open(os.path.join(self.model_dir, 'classes.dat'), 'rb') as classes_file:
+                self.classes = np.load(classes_file, allow_pickle=True)
+        elif self.classifier_method == 'svm':
+            self.svm_clf = joblib.load(kwargs['model_path'])
     def _knn_recog(self, frame, boxes, **kwargs):
         result = []
         for (x1, y1, x2, y2) in boxes:
@@ -184,6 +199,25 @@ class FaceRecognition:
                 probas = self.knn.predict_proba([target_face])
                 if np.max(probas) >= kwargs['threshold']:
                     label = self.knn.classes_[np.argmax(probas)]
+                    result.append([label])
+                else:
+                    result.append(['unknown'])
+            except:
+                traceback.print_exc()
+        return result
+    
+    def _svm_recog(self, frame, boxes, **kwargs):
+        result = []
+        for (x1, y1, x2, y2) in boxes:
+            try:
+                # print(x1,y1,x2,y2)
+                # crop = frame[y1:y2, x1:x2, :]
+                # cv2.imshow('debug', crop)
+                # cv2.waitKey(0)
+                target_face = self.feature_extractor.feed(frame)
+                probas = self.svm_clf.predict_proba([target_face])
+                if np.max(probas) >= kwargs['threshold']:
+                    label = self.svm_clf.classes_[np.argmax(probas)]
                     result.append([label])
                 else:
                     result.append(['unknown'])
@@ -294,6 +328,8 @@ class FaceRecognition:
             result = self._knn_recog(frame, boxes, **kwargs)
         elif self.classifier_method == 'nn':
             result = self._nn_recog(frame, boxes, **kwargs)
+        elif self.classifier_method == 'svm':
+            result = self._svm_recog(frame, boxes, **kwargs)
         else:
             result = self._distance_recog(frame, boxes, **kwargs)
         return result 
@@ -409,51 +445,19 @@ class ModelTraining:
         pickle.dump(knn, model_pkl)
 
     def train_simple_model(self, features, labels, detect_face=False, output_model_location='.'):
-#         features = []
-#         labels = []
-#         model = []
-#         classes = []
-#         features_file = open(os.path.join(output_model_location, 'features.dat'), 'wb')
-#         labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'wb')
-#         model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
-#         classes_file = open(os.path.join(output_model_location, 'classes.dat'), 'w')
-#         for id, img_paths in train_set_dict.items():
-#         # pdb.set_trace()
-#             classes.append(id)
-#             classes_file.write(id + '\n')
-#             # list for putting multiple encoded vector of a same person
-#             encoded_vec_list = []
-#             print('Learning 1 person')
-#             for img_path in img_paths:
-#                 try:
-#                     img = face_recognition.load_image_file(img_path)
-#                     if detect_face:
-#                         top, right, bottom, left = face_recognition.face_locations(img)[0]
-#                         encoded_vec = self.feature_extractor.feed(img[left:right,top:bottom,:])
-#                     else:
-#                         encoded_vec = self.feature_extractor.feed(img)
-# #                     print(encoded_vec)
-#                     features.append(encoded_vec)
-#                     labels.append(id)
-#                     features.append(encoded_vec)
-#                     encoded_vec_list.append(encoded_vec)
-#                 except Exception as e:
-#                     print(e)
-#                     traceback.print_exc()
-#             encoded_vec_list = [np.average(encoded_vec_list, axis=0)]
-#             model.append(encoded_vec_list)
-#         np.save(model_file, model)
-#         np.save(features_file, features)
-#         np.save(labels_file, labels)
-#         labels_file.close()
-#         model_file.close()
-#         classes_file.close()
-#         features_file.close()
+        model_file = open(os.path.join(output_model_location, 'model.dat'), 'wb')
+        classes_file = open(os.path.join(output_model_location, 'classes.dat'), 'wb')
         model = {}
         for feature, label in zip(features, labels):
             if label not in model:
                 model[label] = feature
             model[label] = (model[label] + feature)/2
+            
+        classes, centroid_vec = tuple(zip(*model.items()))
+        np.save(model_file, centroid_vec)
+        np.save(classes_file, classes)
+        model_file.close()
+        classes_file.close()
         return model
             
     

@@ -58,6 +58,10 @@ recog = FaceRecognition(
     model_dir='/home/huy/face_recog/models/knn',
     classifier_method='knn'
 )
+recog = FaceRecognition(
+    classifier_method='svm',
+    model_path='/home/huy/face_recog/models/knn'
+)
 
 def process_id(result_id):
     mqtt_client.publish('/ids', result_id[0])
