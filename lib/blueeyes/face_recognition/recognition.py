@@ -187,42 +187,33 @@ class FaceRecognition:
                 self.classes = np.load(classes_file, allow_pickle=True)
         elif self.classifier_method == 'svm':
             self.svm_clf = joblib.load(kwargs['model_path'])
-    def _knn_recog(self, frame, boxes, **kwargs):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                probas = self.knn.predict_proba([target_face])
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.knn.classes_[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+
+    def extract_feature(self, frame):
+        feature = self.feature_extractor.feed(frame)
+        return feature
+
+    def _knn_recog(self, feature, **kwargs):
+        try:
+            probas = self.knn.predict_proba([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.knn.classes_[np.argmax(probas)]
+                result = label 
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
     
-    def _svm_recog(self, frame, boxes, **kwargs):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                probas = self.svm_clf.predict_proba([target_face])
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.svm_clf.classes_[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+    def _svm_recog(self, feature, **kwargs):
+        try:
+            probas = self.svm_clf.predict_proba([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.svm_clf.classes_[np.argmax(probas)]
+                result = label
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
             
 #     def _vgg_recog(self, frame, boxes, recog_level=1, threshold=0.5):
@@ -246,43 +237,36 @@ class FaceRecognition:
 #                 result.append(predict_label)
 #         return result
 
-    def _distance_recog(self, frame, boxes, recog_level=1, threshold=0.5):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                match_count = 0
-                total_count = 0
-                predict_label = ['unknown']
-                # slow method (check pass)
-                # min_distance = 1
-                # for model_face_list, label in zip(self.model, self.labels):
-                #     dis = distance.euclidean(target_face, model_face_list[0])
-                #     if dis < min_distance:
-                #         min_distance = dis
-                #         predict_label = [label]
+    def _distance_recog(self, feature, recog_level=1, threshold=0.5):
+        try:
+            match_count = 0
+            total_count = 0
+            predict_label = 'unknown'
+            # slow method (check pass)
+            # min_distance = 1
+            # for model_face_list, label in zip(self.model, self.labels):
+            #     dis = distance.euclidean(target_face, model_face_list[0])
+            #     if dis < min_distance:
+            #         min_distance = dis
+            #         predict_label = [label]
 
-                # experimental
-                prepare_list = np.repeat([[target_face]], len(self.model), axis=0)
-                result_list = np.linalg.norm(prepare_list-self.model, axis=2)
-                min_distance = np.min(result_list)
-                # print(min_distance, np.argmin(result_list))
-                # print(prepare_list.shape, self.model.shape, result_list.shape)
-                predict_label = [self.classes[np.argmin(result_list)]]
-                
-                if min_distance > threshold:
-                    result.append(['unknown'])
-                else:
-                    result.append(predict_label)
-            except:
-                # print(result_list)
-                traceback.print_exc()
-                print('target_face.shape', target_face.shape)
-                print('np.argmin(result_list)', np.argmin(result_list))
+            # experimental
+            prepare_list = np.repeat([[feature]], len(self.model), axis=0)
+            result_list = np.linalg.norm(prepare_list-self.model, axis=2)
+            min_distance = np.min(result_list)
+            # print(min_distance, np.argmin(result_list))
+            # print(prepare_list.shape, self.model.shape, result_list.shape)
+            predict_label = [self.classes[np.argmin(result_list)]]
+            
+            if min_distance > threshold:
+                result = 'unknown'
+            else:
+                result = predict_label
+        except:
+            # print(result_list)
+            traceback.print_exc()
+            print('target_face.shape', feature.shape)
+            print('np.argmin(result_list)', np.argmin(result_list))
         return result
         #     for model_face_list, label in zip(self.model, self.labels):
         #         if match_count > 0:
@@ -308,30 +292,27 @@ class FaceRecognition:
         #         result.append(['unknown'])
         # return result
 
-    def _nn_recog(self, frame, boxes, **kwargs):
-        result = []
-        for box in boxes:
-            try:
-                face = self.face_roi(frame, box)
-                probas = self.model.predict(self.preprocess_image(face))
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.classes[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+    def _nn_recog(self, feature, **kwargs):
+        try:
+            probas = self.model.predict([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.classes[np.argmax(probas)]
+                result = label
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
 
-    def recog(self, frame, boxes, **kwargs):
+    def recog(self, feature, **kwargs):
         if self.classifier_method == 'knn':
-            result = self._knn_recog(frame, boxes, **kwargs)
+            result = self._knn_recog(feature, **kwargs)
         elif self.classifier_method == 'nn':
-            result = self._nn_recog(frame, boxes, **kwargs)
+            result = self._nn_recog(feature, **kwargs)
         elif self.classifier_method == 'svm':
-            result = self._svm_recog(frame, boxes, **kwargs)
+            result = self._svm_recog(feature, **kwargs)
         else:
-            result = self._distance_recog(frame, boxes, **kwargs)
+            result = self._distance_recog(feature, **kwargs)
         return result 
 
     def put_to_result_buffer(self, boxes, labels):

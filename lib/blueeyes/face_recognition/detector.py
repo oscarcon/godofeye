@@ -87,14 +87,15 @@ class FaceDetector:
             boxes = list(map(zero_negative, boxes))
         return self.boxes
 
-    def draw_bounding_box(self, frame, boxes):
+    def draw_bounding_box(self, frame, boxes, color):
         for box in boxes:
-            if len(box) > 0:
+            if len(box) == 4:
                 pt1  = (box[0], box[1])
                 pt2 = (box[2], box[3])
-                cv2.rectangle(frame, pt1, pt2, color=(0,0,255), thickness=2)
+                cv2.rectangle(frame, pt1, pt2, color, thickness=2)
+        return frame
     def debug(self, frame):
-        self.draw_bounding_box(frame, self.boxes)
+        self.draw_bounding_box(frame, self.boxes, (255,255,0))
 
 if __name__ == '__main__':
     # cam = Camera()
