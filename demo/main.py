@@ -32,15 +32,15 @@ from blueeyes.tracking import Tracking
 import paho.mqtt.client as mqtt
 
 mqtt_client = mqtt.Client()
-# mqtt_client.connect('blueeyesteam.local', 1883, 60)
-mqtt_client.connect('localhost', 1883, 60)
+mqtt_client.connect('blueeyesteam.local', 1883, 60)
+# mqtt_client.connect('localhost', 1883, 60)
 
 # cap = Camera(source='/home/huy/Downloads/2_nguoi_cat_nhau_NhatHuy.mp4', frameskip=5)
 # cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
-# cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
+cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
 # cap = Camera(source='rtsp://Admin:12345@10.42.0.235:554/Streaming/Channels/101', frameskip=5)
-cap = Camera(source=0, frameskip=15)
+# cap = Camera(source=0, frameskip=15)
 
 # cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
 # cap = cv2.VideoCapture('/home/huy/Downloads/dataV13_group.avi')
@@ -49,7 +49,7 @@ cap = Camera(source=0, frameskip=15)
 cap.start()
 
 # Configurations
-FRAME_COUNT_TO_DECIDE = 5
+FRAME_COUNT_TO_DECIDE = 3
 
 HOME = os.environ['HOME']
 detector = FaceDetector('mtcnn', min_face_size=40)
@@ -89,6 +89,7 @@ execution_time = {}
 
 if not cap.cap.isOpened():
     print('Error in opening camera')
+    sys.exit(-1)
 
 frame_count = 0
 
@@ -107,10 +108,13 @@ def percent_of_majority(lst):
     max_count = max(values)
     return keys[values.index(max_count)], max_count/len(lst)
 
+
+mqtt_client.loop_start()
 while True:
     try:
-        mqtt_client.loop_start()
-        ret, frame = cap.read()
+        # if not cap.cap.isOpened():
+        #     cap.restart()
+        ret, frame = cap.read() 
         if ret:
             frame = cv2.resize(frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_AREA)
             frame_count += 1
@@ -119,7 +123,6 @@ while True:
             boxes = detector.detect(frame)
             execution_time['detection'] = time() - start_time
             start_time = time()
-            
             # ignore too bright faces
             temp_boxes = []
             for box in boxes:
@@ -150,10 +153,10 @@ while True:
                 print(tracking.count())
                 for i in range(tracking.count()):
                     features = tracking.features_history(i)
-                    if len(features) > 10:
-                        labels = recog.recog(features, threshold=0.5)
+                    if len(features) > FRAME_COUNT_TO_DECIDE:
+                        labels = recog.recog(features, threshold=0.0)
                         label, percent = percent_of_majority(labels)
-                        if percent > 0.7:
+                        if percent > 0.3:
                             current_time = datetime.now().strftime('%d%m%Y_%H%M%S')
                             filename = f'{label}_{current_time}.jpg'
                             if label != 'unknown':

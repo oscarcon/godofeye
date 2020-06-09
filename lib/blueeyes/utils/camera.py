@@ -10,6 +10,7 @@ class Camera(Thread):
     def __init__(self, source, frameskip=0):
         Thread.__init__(self)
         self.cap = cv2.VideoCapture(source)
+        self.source = source
         self.image_queue = queue.Queue(maxsize=self.MAX_STACK_SIZE)
         self.frame_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.frame_height = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
@@ -17,6 +18,8 @@ class Camera(Thread):
         # self.video_writer = cv2.VideoWriter('result.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (self.frame_width,self.frame_height))
         # self.get_frame_thread = threading.Thread(target=self._get_frame)
         # self.get_frame_thread.start()
+    def restart(self):
+        self.cap = cv2.VideoCapture(self.source)
     def run(self):
         try:
             while True:

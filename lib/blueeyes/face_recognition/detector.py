@@ -22,7 +22,7 @@ class FaceDetector:
         if self.type == 'yolo':
             from yolo.yolo import YOLO
             self.face_detector = YOLO(img_size=kwargs['model_img_size'])
-        if self.type == 'haar':
+        elif self.type == 'haar':
             self.face_detector = cv2.CascadeClassifier('cascade_model/cascade_ignore_shirt.xml')
         elif self.type == 'mtcnn':
             from mtcnn import MTCNN
@@ -33,6 +33,9 @@ class FaceDetector:
             import mtcnn_torch as mtcnn
             pnet, rnet, onet = mtcnn.get_net_caffe('mtcnn_torch/model')
             self.face_detector = mtcnn.FaceDetector(pnet, rnet, onet, device='cuda:0')
+        elif self.type == 'facenet_pytorch':
+            from facenet_pytorch import MTCNN
+            self.face_detector = MTCNN(image_size=150, select_largest=False, keep_all=True, post_process=False, margin=40, device='cuda')
 
     def detect(self, frame, size_ranges=[], brightness_ranges=[], filter=False):
         def is_in_size_ranges(box):
@@ -78,6 +81,13 @@ class FaceDetector:
             _boxes, landmarks = detector.detect(img)
             for box in _boxes:
                 boxes.append(tuple([int(box[i]) for i in range(len(box))]))
+        elif self.type == 'facenet_pytorch':
+            boxes_, probs = self.face_detector.detect(frame)
+            boxes = []
+            if not isinstance(boxes_, type(None)):
+                for box in boxes:
+                    box = tuple(map(int, box))
+                    boxes.append(box)
         # zero negative value in box
         boxes = list(map(zero_negative, boxes))
         self.boxes = [tuple(map(lambda v: v*self.scale,box)) for box in boxes]
