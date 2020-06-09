@@ -18,4 +18,4 @@ sess = tf.Session(config=config)
 set_session(sess) 
 
 from .detector import FaceDetector
-from .recognition import FaceRecognition, FeatureExtractor, ModelTraining
+from .recognition import *

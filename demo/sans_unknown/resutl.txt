@@ -1,0 +1,96 @@
+100%|██████████| 24000/24000 [00:57<00:00, 416.88it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca5f48b0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca5f48b0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.8965 0.8965 0.902416293213603
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca422eb0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca422eb0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.8965 0.8965 0.902416293213603
+unknown_rate: 0.0
+
+100%|██████████| 24000/24000 [04:30<00:00, 88.61it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c0a5aee0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c0a5aee0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.9855833333333334 0.9855833333333334 0.9871110382951535
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c9bd4640>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c9bd4640>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.9855833333333334 0.9855833333333334 0.9871110382951535
+unknown_rate: 0.0
+
+100%|██████████| 24000/24000 [06:14<00:00, 64.13it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c85ec670>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c85ec670>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.9738333333333333 0.9738333333333333 0.975904107528349
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c0526580>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c0526580>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.9738333333333333 0.9738333333333333 0.975904107528349
+unknown_rate: 0.0
+
+100%|██████████| 24000/24000 [00:58<00:00, 410.10it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca1979d0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6ca1979d0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.677125 0.677125 0.719168256676824
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c097aac0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c097aac0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.677125 0.677125 0.719168256676824
+unknown_rate: 0.0
+
+100%|██████████| 24000/24000 [04:30<00:00, 88.62it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c115f8e0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c115f8e0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.8297916666666667 0.8297916666666667 0.8550371794258674
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c115cfa0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c115cfa0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.8297916666666667 0.8297916666666667 0.8550371794258674
+unknown_rate: 0.0
+
+100%|██████████| 24000/24000 [06:30<00:00, 61.40it/s]
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c84edcd0>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c84edcd0>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result: 0.7885416666666667 0.7885416666666667 0.8090375136358645
+
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c80bf730>
+DEBUG:matplotlib.colorbar:Using auto colorbar locator on colorbar
+DEBUG:matplotlib.colorbar:locator: <matplotlib.colorbar._ColorbarAutoLocator object at 0x7fa6c80bf730>
+DEBUG:matplotlib.colorbar:Setting pcolormesh
+
+result_without_unknown: 0.7885416666666667 0.7885416666666667 0.8090375136358645
+unknown_rate: 0.0
+

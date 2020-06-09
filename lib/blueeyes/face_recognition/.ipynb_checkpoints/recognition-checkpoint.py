@@ -7,10 +7,13 @@ import pickle
 import joblib
 import traceback
 import threading
+import multiprocessing
 import numpy as np
 from time import time
 import face_recognition
 from scipy.spatial import distance
+
+from functools import partial
 
 from tqdm.notebook import tqdm
 
@@ -26,6 +29,32 @@ from skimage.transform import resize
 # sys.path.append('../../OpenFacePytorch')
 import torch
 from OpenFacePytorch import OpenFace
+
+def preprocess_image__(self, x):
+        # Resize the image to have the shape of (128, 128)
+        x = resize(x, (self.target_size, self.target_size),
+            mode='constant',
+            anti_aliasing=False)
+        x = x.astype(np.float32) / 255
+        x = np.expand_dims(x, axis=0)
+        return x
+    
+def preprocess_image(self, img, norm=False):
+    y_scale = self.target_size / img.shape[0]
+    img = cv2.resize(img, None, fx=y_scale, fy=y_scale)
+    black = np.zeros((self.target_size, self.target_size, 3), dtype='uint8')
+    y1 = (self.target_size - x.shape[1]) // 2
+    y2 = self.target_size - y1
+    black[:, y1:y2, :] = img[:,:,:]
+    if norm:
+        black = black.astype(np.float32) / 255
+        black = np.expand_dims(balck, axis=0)
+    return black
+
+def face_roi(self, frame, box):
+    (x1, y1, x2, y2) = box
+    return frame[y1:y2, x1:x2]
+
 
 class TrainOption(enum.Enum):
     RETRAIN = 1
@@ -150,28 +179,6 @@ class FaceRecognition:
 
 
     # preprocess image before feeding to the network
-    def preprocess_image(self, x):
-        # Resize the image to have the shape of (128, 128)
-        x = resize(x, (self.target_size, self.target_size),
-            mode='constant',
-            anti_aliasing=False)
-        x = x.astype(np.float32) / 255
-        x = np.expand_dims(x, axis=0)
-        return x
-    
-    def preprocess_image_(self, img):
-        y_scale = self.target_size / img.shape[0]
-        img = cv2.resize(img, None, fx=y_scale, fy=y_scale)
-        black = np.zeros((self.target_size, self.target_size, 3), dtype='uint8')
-        y1 = (self.target_size - x.shape[1]) // 2
-        y2 = self.target_size - y1
-        black[:, y1:y2, :] = img[:,:,:]
-        return black
-    
-    def face_roi(self, frame, box):
-        (x1, y1, x2, y2) = box
-        return frame[y1:y2, x1:x2]
-
 
     def _load_model(self, **kwargs):
         if self.classifier_method == 'knn':
@@ -187,42 +194,33 @@ class FaceRecognition:
                 self.classes = np.load(classes_file, allow_pickle=True)
         elif self.classifier_method == 'svm':
             self.svm_clf = joblib.load(kwargs['model_path'])
-    def _knn_recog(self, frame, boxes, **kwargs):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                probas = self.knn.predict_proba([target_face])
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.knn.classes_[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+
+    def extract_feature(self, frame):
+        feature = self.feature_extractor.feed(frame)
+        return feature
+
+    def _knn_recog(self, feature, **kwargs):
+        try:
+            probas = self.knn.predict_proba([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.knn.classes_[np.argmax(probas)]
+                result = label 
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
     
-    def _svm_recog(self, frame, boxes, **kwargs):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                probas = self.svm_clf.predict_proba([target_face])
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.svm_clf.classes_[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+    def _svm_recog(self, feature, **kwargs):
+        try:
+            probas = self.svm_clf.predict_proba([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.svm_clf.classes_[np.argmax(probas)]
+                result = label
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
             
 #     def _vgg_recog(self, frame, boxes, recog_level=1, threshold=0.5):
@@ -246,43 +244,36 @@ class FaceRecognition:
 #                 result.append(predict_label)
 #         return result
 
-    def _distance_recog(self, frame, boxes, recog_level=1, threshold=0.5):
-        result = []
-        for (x1, y1, x2, y2) in boxes:
-            try:
-                # print(x1,y1,x2,y2)
-                # crop = frame[y1:y2, x1:x2, :]
-                # cv2.imshow('debug', crop)
-                # cv2.waitKey(0)
-                target_face = self.feature_extractor.feed(frame)
-                match_count = 0
-                total_count = 0
-                predict_label = ['unknown']
-                # slow method (check pass)
-                # min_distance = 1
-                # for model_face_list, label in zip(self.model, self.labels):
-                #     dis = distance.euclidean(target_face, model_face_list[0])
-                #     if dis < min_distance:
-                #         min_distance = dis
-                #         predict_label = [label]
+    def _distance_recog(self, feature, recog_level=1, threshold=0.5):
+        try:
+            match_count = 0
+            total_count = 0
+            predict_label = 'unknown'
+            # slow method (check pass)
+            # min_distance = 1
+            # for model_face_list, label in zip(self.model, self.labels):
+            #     dis = distance.euclidean(target_face, model_face_list[0])
+            #     if dis < min_distance:
+            #         min_distance = dis
+            #         predict_label = [label]
 
-                # experimental
-                prepare_list = np.repeat([[target_face]], len(self.model), axis=0)
-                result_list = np.linalg.norm(prepare_list-self.model, axis=2)
-                min_distance = np.min(result_list)
-                # print(min_distance, np.argmin(result_list))
-                # print(prepare_list.shape, self.model.shape, result_list.shape)
-                predict_label = [self.classes[np.argmin(result_list)]]
-                
-                if min_distance > threshold:
-                    result.append(['unknown'])
-                else:
-                    result.append(predict_label)
-            except:
-                # print(result_list)
-                traceback.print_exc()
-                print('target_face.shape', target_face.shape)
-                print('np.argmin(result_list)', np.argmin(result_list))
+            # experimental
+            prepare_list = np.repeat([[feature]], len(self.model), axis=0)
+            result_list = np.linalg.norm(prepare_list-self.model, axis=2)
+            min_distance = np.min(result_list)
+            # print(min_distance, np.argmin(result_list))
+            # print(prepare_list.shape, self.model.shape, result_list.shape)
+            predict_label = [self.classes[np.argmin(result_list)]]
+            
+            if min_distance > threshold:
+                result = 'unknown'
+            else:
+                result = predict_label
+        except:
+            # print(result_list)
+            traceback.print_exc()
+            print('target_face.shape', feature.shape)
+            print('np.argmin(result_list)', np.argmin(result_list))
         return result
         #     for model_face_list, label in zip(self.model, self.labels):
         #         if match_count > 0:
@@ -308,30 +299,27 @@ class FaceRecognition:
         #         result.append(['unknown'])
         # return result
 
-    def _nn_recog(self, frame, boxes, **kwargs):
-        result = []
-        for box in boxes:
-            try:
-                face = self.face_roi(frame, box)
-                probas = self.model.predict(self.preprocess_image(face))
-                if np.max(probas) >= kwargs['threshold']:
-                    label = self.classes[np.argmax(probas)]
-                    result.append([label])
-                else:
-                    result.append(['unknown'])
-            except:
-                traceback.print_exc()
+    def _nn_recog(self, feature, **kwargs):
+        try:
+            probas = self.model.predict([feature])
+            if np.max(probas) >= kwargs['threshold']:
+                label = self.classes[np.argmax(probas)]
+                result = label
+            else:
+                result = 'unknown'
+        except:
+            traceback.print_exc()
         return result
 
-    def recog(self, frame, boxes, **kwargs):
+    def recog(self, feature, **kwargs):
         if self.classifier_method == 'knn':
-            result = self._knn_recog(frame, boxes, **kwargs)
+            result = self._knn_recog(feature, **kwargs)
         elif self.classifier_method == 'nn':
-            result = self._nn_recog(frame, boxes, **kwargs)
+            result = self._nn_recog(feature, **kwargs)
         elif self.classifier_method == 'svm':
-            result = self._svm_recog(frame, boxes, **kwargs)
+            result = self._svm_recog(feature, **kwargs)
         else:
-            result = self._distance_recog(frame, boxes, **kwargs)
+            result = self._distance_recog(feature, **kwargs)
         return result 
 
     def put_to_result_buffer(self, boxes, labels):
@@ -403,39 +391,50 @@ class ModelTraining:
     def _batch_process(img_paths, ID):
         pass
     
-    def create_train_set(self, train_set_dict, detect_face=False, output_model_location='.'):
-        # create model dir is the dir is not exist
-        if not os.path.exists(output_model_location):
-            os.makedirs(output_model_location)
-        labels = []
-        features = []
-        labels_file = open(os.path.join(output_model_location, 'labels.dat'), 'w')
-        features_file = open(os.path.join(output_model_location, 'features.dat'), 'wb')
+    def split_into(self, d, n_part):
+        parts = []
+        d = list(d.items())
+        part_size = len(d)//n_part
+        i = 0
+        while i < n_part:
+            parts.append(dict(d[i*part_size:(i*part_size+part_size)]))
+            i += 1
+        for i in range(len(d) % n_part):
+            key, value = d[n_part*part_size+i]
+            parts[i][key] = value
+        return parts
+
+    def process_batch(self, d):
         i = 1
-        for id, img_paths in train_set_dict.items():
+        features = []
+        for id, img_paths in d.items():
             # pdb.set_trace()
-            print(f'{i}/{len(train_set_dict.keys())}')
+            print(f'{i}/{len(d.keys())}')
             i += 1
             with tqdm(total=len(img_paths)) as pbar:
                 for img_path in img_paths:
-                    labels.append(id)
-                    labels_file.write(id + '\n')
                     try:
                         img = face_recognition.load_image_file(img_path)
-                        if detect_face:
-                            top, right, bottom, left = face_recognition.face_locations(img)[0]
-                            encoded_vec = self.feature_extractor.feed(img[left:right,top:bottom,:])
-                        else:
-                            encoded_vec = self.feature_extractor.feed(img)
-    #                     print(encoded_vec)
-                        features.append(encoded_vec)
+                        encoded_vec = self.feature_extractor.feed(img)
+                        features.append((encoded_vec, id))
                         pbar.update(1)
                     except Exception as e:
                         print(e)
-        np.save(features_file, features)
-        labels_file.close()
-        features_file.close()
-        return features, labels
+        return features
+    
+    def create_train_set(self, train_set_dict, detect_face=False, output_model_location='.', process=6):        
+        # create model dir is the dir is not exist
+        if not os.path.exists(output_model_location):
+            os.makedirs(output_model_location)
+        features = []
+        with multiprocessing.Pool(process) as pool:
+            return_value = pool.map(self.process_batch, self.split_into(train_set_dict, process))
+            features.extend(return_value)
+        output = []
+        for batch in features:
+            output.extend(batch)
+        joblib.dump(output, os.path.join(output_model_location, 'features.joblib'))
+        return output
 
     def train_knn(self, features, labels, K=7, metric='euclidean', weights='distance', output_model_location='.'):
         knn = KNeighborsClassifier(n_neighbors=K, metric=metric, weights=weights)

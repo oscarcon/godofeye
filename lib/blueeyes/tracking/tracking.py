@@ -7,6 +7,7 @@ import sys
 import cv2
 import queue
 import time
+import threading
 import numpy as np
 
 class Object:
@@ -30,6 +31,7 @@ class Tracking:
         self.deadline = deadline
         self.threshold = threshold
         self.max_live_time = max_live_time
+        # self._self_check_buffer()
 
     def push(self, faces_info):
         if not self.buffer:
@@ -39,12 +41,7 @@ class Tracking:
         else:
             for info in faces_info:
                 self._asign_to_obj(info)
-        i = 0
-        while i < len(self.buffer):
-            if self.buffer[i].get_location() > self.deadline or self.buffer[i].live_time() > self.max_live_time:
-                del(self.buffer[i])
-                i -= 1
-            i += 1
+        # self._check_buffer_status()
 
     def count(self):
         return len(self.buffer)
@@ -64,6 +61,18 @@ class Tracking:
 
     def register_callback(self, cb_method):
         self.cb = cb_method
+
+    def _self_check_buffer(self):
+        self._check_buffer_status()
+        threading.Timer(1.0, self._self_check_buffer).start()
+
+    def _check_buffer_status(self):
+        i = 0
+        while i < len(self.buffer):
+            if self.buffer[i].get_location() > self.deadline or self.buffer[i].live_time() > self.max_live_time:
+                del(self.buffer[i])
+                i -= 1
+            i += 1
 
     def _asign_to_obj(self, face_info):
         last_features = np.array([obj.features[-1] for obj in self.buffer])

@@ -34,7 +34,7 @@ class FaceDetector:
             pnet, rnet, onet = mtcnn.get_net_caffe('mtcnn_torch/model')
             self.face_detector = mtcnn.FaceDetector(pnet, rnet, onet, device='cuda:0')
 
-    def detect(self, frame, size_ranges=[], brightness_ranges=[], filter=True):
+    def detect(self, frame, size_ranges=[], brightness_ranges=[], filter=False):
         def is_in_size_ranges(box):
             left, top, right, bottom = box
             width = right - left
@@ -53,7 +53,7 @@ class FaceDetector:
                     return True
             return False
         def zero_negative(box):
-            return tuple([b if b > 0 else -b for b in box])
+            return tuple([b if b > 0 else 0 for b in box])
 
         frame = cv2.resize(frame, (0,0), fx=1/self.scale, fy=1/self.scale, interpolation=cv2.INTER_CUBIC)
 
@@ -78,13 +78,13 @@ class FaceDetector:
             _boxes, landmarks = detector.detect(img)
             for box in _boxes:
                 boxes.append(tuple([int(box[i]) for i in range(len(box))]))
+        # zero negative value in box
+        boxes = list(map(zero_negative, boxes))
         self.boxes = [tuple(map(lambda v: v*self.scale,box)) for box in boxes]
 
         if filter:
             boxes = [box for box in boxes if is_in_size_ranges(box)]
             boxes = [box for box in boxes if is_in_brightness_ranges(box)]
-            # zero negative value in box
-            boxes = list(map(zero_negative, boxes))
         return self.boxes
 
     def draw_bounding_box(self, frame, boxes, color):

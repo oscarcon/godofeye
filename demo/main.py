@@ -1,13 +1,18 @@
 import os
 import sys
 import cv2
+import json
 import numpy as np
+from pathlib import Path
 from time import time, sleep
+from datetime import datetime
 from queue import Queue
 from collections import namedtuple
 
 sys.path.append('../lib')
 sys.path.append('../lib/yoloface')
+
+EVIDENT_ROOT = str(Path.home() / 'evident')
 
 import tensorflow.compat.v1 as tf
 import tensorflow.keras as keras
@@ -20,21 +25,22 @@ def new_tfinit(session, target='', graph=None, config=None):
 tf.Session.__init__ = new_tfinit
 
 from blueeyes.utils import Camera
-from blueeyes.face_recognition import FaceDetector, FaceRecognition
+from blueeyes.face_recognition import FaceDetector, FaceRecognition, face_roi
 from blueeyes.tracking import Tracking
 
 # mqtt for communication between modules
 import paho.mqtt.client as mqtt
 
 mqtt_client = mqtt.Client()
+# mqtt_client.connect('blueeyesteam.local', 1883, 60)
 mqtt_client.connect('localhost', 1883, 60)
 
-# cap = Camera(source='/home/huy/Downloads/AnhDuy.mp4', frameskip=5)
-cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
+# cap = Camera(source='/home/huy/Downloads/2_nguoi_cat_nhau_NhatHuy.mp4', frameskip=5)
+# cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
 # cap = Camera(source='rtsp://Admin:12345@10.42.0.235:554/Streaming/Channels/101', frameskip=5)
-# cap = Camera(source=0, frameskip=15)
+cap = Camera(source=0, frameskip=15)
 
 # cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
 # cap = cv2.VideoCapture('/home/huy/Downloads/dataV13_group.avi')
@@ -61,14 +67,20 @@ detector = FaceDetector('mtcnn', min_face_size=40)
 #     classifier_method='knn'
 # )
 recog = FaceRecognition(
+    feature_extractor_type='dlib',
     classifier_method='svm',
-    model_path='/home/huy/face_recog/models/svm/aug3_0.1_128.svm'
+    model_path='/home/huy/face_recog/models/svm/07062020_160820.svm'
 )
 
-tracking = Tracking(deadline=cap.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*0.6, threshold=0.3, max_live_time=1000)
+tracking = Tracking(deadline=cap.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*0.6, threshold=0.3, max_live_time=7)
 
-def process_id(result_id):
-    mqtt_client.publish('/ids', result_id)
+def process_id(result_id, evident_path):
+    recog_report = {
+        'id': result_id.replace('\n', ''), 
+        'time': time(),
+        'evident_path': evident_path
+    }
+    mqtt_client.publish('/ids', json.dumps(recog_report))
     print(result_id)
 
 recog.on_final_decision(process_id)
@@ -123,28 +135,34 @@ while True:
                     input()
 
             boxes = temp_boxes
-
+            face_imgs = []
             for box in boxes:
-                face_img = recog.face_roi(frame, box)
-                feature = recog.extract_feature(face_img)
-
-                # Post-processing the raw recognition data
-                # recog.put_to_result_buffer([box],[label])
-
-                tracking.push([(box, feature)])
+                face_imgs.append(face_roi(frame, box))
+            features = recog.extract_feature(face_imgs)
+            # Post-processing the raw recognition data
+            # recog.put_to_result_buffer([box],[label])
+            for i,box in enumerate(boxes):
+                tracking.push([(box, features[i])])
                 # execution_time['recognition'] = time() - start_time
                 # print(execution_time)
             if frame_count % 5 == 0:
+                tracking._check_buffer_status()
+                print(tracking.count())
                 for i in range(tracking.count()):
                     features = tracking.features_history(i)
                     if len(features) > 10:
-                        temp_labels = []
-                        for feature in features:
-                            label = recog.recog(feature, threshold=0.5)
-                            temp_labels.append(label)
-                        label, percent = percent_of_majority(temp_labels)
+                        labels = recog.recog(features, threshold=0.5)
+                        label, percent = percent_of_majority(labels)
                         if percent > 0.7:
-                            process_id(label)
+                            current_time = datetime.now().strftime('%d%m%Y_%H%M%S')
+                            filename = f'{label}_{current_time}.jpg'
+                            if label != 'unknown':
+                                evident_path = os.path.join(EVIDENT_ROOT, 'others', filename)
+                            else:
+                                evident_path = os.path.join(EVIDENT_ROOT, 'unknowns', filename)
+                            cv2.imwrite(evident_path, frame)
+                            process_id(label, evident_path)
+
                             
             # Show the frame to debug            
             for i in range(tracking.count()):
