@@ -241,6 +241,7 @@ class FaceRecognition:
     def _svm_recog(self, features, **kwargs):
         try:
             result = []
+            
             probas_list = self.svm_clf.predict_proba(features)
             for probas in probas_list:
                 if np.max(probas) >= kwargs['threshold']:

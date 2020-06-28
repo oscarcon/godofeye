@@ -1,0 +1,2 @@
+"evident_path": "../test_options/static/{sbuilding/unknown}"
+"evident_path": "../test_options/static/{sbuilding/known/[id]/[image_path.jpg]}"

@@ -15,7 +15,6 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
 config.log_device_placement = True  # to log device placement (on which device the operation ran)
 sess = tf.Session(config=config)
-set_session(sess) 
+set_session(sess)
 
-from .detector import FaceDetector
 from .recognition import *

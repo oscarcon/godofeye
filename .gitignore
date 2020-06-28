@@ -1,6 +1,5 @@
 .vscode/
-test_video/
-train_data/
 utils/camera_capture/*.avi
 __pycache__/
 lib/yoloface/model-weights/
+etc/
