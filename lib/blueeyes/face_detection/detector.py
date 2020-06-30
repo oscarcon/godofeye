@@ -5,6 +5,7 @@ import time
 import logging
 import numpy as np
 import face_recognition
+import torch
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.path.pardir)))
 
@@ -35,7 +36,21 @@ class FaceDetector:
         elif self.type == 'facenet_pytorch':
             from facenet_pytorch import MTCNN
             self.face_detector = MTCNN(image_size=150, select_largest=False, keep_all=True, post_process=False, margin=40, device='cuda')
-
+        elif self.type == 'faceboxes':
+            import faceboxes_package as fb
+            torch.set_grad_enabled(False)
+            # net and model
+            self.net = fb.FaceBoxes(phase='test', size=None, num_classes=2)    # initialize detector
+            weight_path = os.path.abspath(os.path.join(fb.__file__, '../weights/FaceBoxes.pth'))
+            self.net = fb.load_model(self.net, weight_path, False)
+            self.net.eval()
+            print('Finished loading model!')
+            print(self.net)
+            fb.cudnn.benchmark = True
+            self.device = torch.device("cuda")
+            self.net = self.net.to(self.device)
+            self.threshold = kwargs['threshold']
+            
     def detect(self, frame, size_ranges=[], brightness_ranges=[], filter=False):
         def is_in_size_ranges(box):
             left, top, right, bottom = box
@@ -57,7 +72,7 @@ class FaceDetector:
         def zero_negative(box):
             return tuple([b if b > 0 else 0 for b in box])
 
-        frame = cv2.resize(frame, (0,0), fx=1/self.scale, fy=1/self.scale, interpolation=cv2.INTER_CUBIC)
+        frame = cv2.resize(frame, (0,0), fx=1/self.scale, fy=1/self.scale, interpolation=cv2.INTER_LINEAR)
 
         if self.type == 'yolo':
             boxes = self.face_detector.detect(frame)
@@ -87,6 +102,62 @@ class FaceDetector:
                 for box in boxes:
                     box = tuple(map(int, box))
                     boxes.append(box)
+        elif self.type == 'faceboxes':
+            import faceboxes_package as fb
+            from faceboxes_package.data.config import cfg
+            from faceboxes_package.config import model_cfg
+
+            # print(cfg)
+            # print(model_cfg)
+
+            img = np.float32(frame)
+            im_height, im_width, _ = img.shape
+            scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
+            img -= (104, 117, 123)
+            img = img.transpose(2, 0, 1)
+            img = torch.from_numpy(img).unsqueeze(0)
+            img = img.to(self.device)
+            scale = scale.to(self.device)
+
+            loc, conf = self.net(img)  # forward pass
+            priorbox = fb.PriorBox(cfg, image_size=(im_height, im_width))
+            priors = priorbox.forward()
+            priors = priors.to(self.device)
+            prior_data = priors.data
+            boxes = fb.decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+            ### Importance when resizing
+            # boxes = boxes * scale / resize
+            boxes = boxes * scale
+            boxes = boxes.cpu().numpy()
+            scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+
+            # ignore low scores
+            inds = np.where(scores > model_cfg['confidence_threshold'])[0]
+            boxes = boxes[inds]
+            scores = scores[inds]
+
+            # keep top-K before NMS
+            order = scores.argsort()[::-1][:model_cfg['top_k']]
+            boxes = boxes[order]
+            scores = scores[order]
+
+            # do NMS
+            dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+            #keep = py_cpu_nms(dets, args.nms_threshold)
+            keep = fb.nms(dets, model_cfg['nms_threshold'], force_cpu=False)
+            dets = dets[keep, :]
+
+            # keep top-K faster NMS
+            dets = dets[:model_cfg['keep_top_k'], :]
+            boxes = []
+            for b in dets:
+                if b[4] < self.threshold:
+                    continue
+                b = list(map(int, b))
+                boxes.append(b[0:4])
+        ### End method overloading
+
+    
         # zero negative value in box
         boxes = list(map(zero_negative, boxes))
         self.boxes = [tuple(map(lambda v: v*self.scale,box)) for box in boxes]

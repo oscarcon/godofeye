@@ -32,10 +32,12 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
+from blueeyes.config import *
 from blueeyes.utils import Camera
 from blueeyes.face_recognition import FaceRecognition, face_roi
 from blueeyes.face_detection import FaceDetector
 from blueeyes.tracking import Tracking
+from blueeyes.utils import WDT
 
 # mqtt for communication between modules
 import paho.mqtt.client as mqtt
@@ -100,18 +102,15 @@ def process_id(result_id, evident_path):
     mqtt_client.publish('/ids', json.dumps(recog_report))
     print(result_id)
 
-HOME = os.environ['HOME']
-EVIDENT_ROOT = str('../etc/evidence')
-
 # Run MQTT client
 mqtt_client = mqtt.Client()
-mqtt_client.connect('10.10.46.160', 1883, 60)
-# mqtt_client.connect('localhost', 1883, 60)
+# mqtt_client.connect('10.10.46.160', 1883, 60)
+mqtt_client.connect('localhost', 1883, 60)
 mqtt_client.loop_start()
 
-cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
-cap = Camera(source=cap_source, frameskip=10)
-# cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=1)
+# cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
+# cap = Camera(source=cap_source, frameskip=10)
+cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=1)
 # cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
@@ -123,9 +122,8 @@ cap = Camera(source=cap_source, frameskip=10)
 # cap.set(cv2.CAP_PROP_FPS, 10)
 
 # Camera configurations
-FRAME_HEIGHT = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) // 2
-FRAME_WIDTH = cap.get(cv2.CAP_PROP_FRAME_WIDTH) // 2
-FRAME_COUNT_TO_DECIDE = 7
+FRAME_HEIGHT = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+FRAME_WIDTH = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
 
 # start getting frame from video stream
 cap.start()
@@ -136,20 +134,24 @@ if not cap.isOpened():
     sys.exit(-1)
 
 # Init core modules: detection, recoginition and tracking
-detector = FaceDetector('mtcnn', min_face_size=20)
+SCALE = 2
+detector = FaceDetector('faceboxes', min_face_size=70, scale=SCALE, threshold=0.3)
 recog = FaceRecognition(
     feature_extractor_type='dlib',
     classifier_method='svm',
     model_path='/home/huy/face_recog/models/svm/rbf_c100_12062020_214524.svm'
     # model_path='/home/huy/face_recog/models/svm/rbf_c1000_12062020_181542.svm'
 )
-tracking = Tracking(deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=10)
+tracking = Tracking(deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=3)
 
 # evident writting thread
 evident_writter = EvidentWritter()
 # video_writter = VideoWritterProcess()
 # video_writter.start()
 # video_writter_process = subprocess.Popen(['/home/huy/venv/cv/bin/python', 'recorder.py', cap_source, str(sys.argv[1])])
+
+# Reset when the system is hanging
+wdt = WDT(timeout=60)
 
 # recog report
 records = []
@@ -164,43 +166,48 @@ execution_time = {}
 while True:
     try: 
         # Read frame and frame available flag (ret)
-        ret, frame = cap.read()
+        ret, origin_frame = cap.read()
         if ret:
+            # Notify the watchdog timer
+            wdt.notify()
+
+            start_time = time()
             print('Got frame')
             frame_count += 1
-            frame = cv2.resize(frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(origin_frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_LINEAR)
 
             # detect face(s) in frame
-            start_time = time()
-            boxes = detector.detect(frame)
+            boxes = detector.detect(origin_frame)
             execution_time['detection'] = time() - start_time
-            start_time = time()
-
+            
             # ignore too bright faces
             temp_boxes = []
             for box in boxes:
                 try:
                     x1, y1, x2, y2 = box
-                    hsv = cv2.cvtColor(frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
+                    hsv = cv2.cvtColor(origin_frame[y1:y2,x1:x2,:], cv2.COLOR_BGR2HSV)
                     brightness = cv2.mean(hsv)[2]
                     if 75 < brightness < 225:
                         temp_boxes.append(box)
                 except:
                     print(box)
-                    print(frame.shape)
-                    input()
-
+                    print(origin_frame.shape)
+                    # input()
+            
+            t_temp = time()
             # feature extraction from detected face(s)
             boxes = temp_boxes
             face_imgs = []
             for box in boxes:
-                face_imgs.append(face_roi(frame, box))
+                face_imgs.append(face_roi(origin_frame, box))
             features = recog.extract_feature(face_imgs)
+            execution_time['extraction'] = time() - t_temp
 
             # send features face location to tracking module for later processing
             for i,box in enumerate(boxes):
                 tracking.push([(box, features[i])])
             
+            t_temp = time()
             # predict every frame
             if features:
                 predict_ids = recog.recog(features, threshold=0.4)
@@ -211,9 +218,10 @@ while True:
                     with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
                         report.write('\t'.join(record) + '\n')
                         report.flush()
+            execution_time['recognition'] = time() - t_temp
 
             # post-processing with the support of tracking module
-            pp_start = time()
+            t_temp = time()
             if frame_count % 5 == 0:
                 tracking._check_buffer_status()
                 print(tracking.count())                            
@@ -223,33 +231,44 @@ while True:
                     color = random_color()
                     color = tuple([int(x) for x in color])
                     color_table[id(tracking.buffer[i])] = color
-                if len(tracking.box_history(i)) > 5:
-                    box_to_draw = tracking.box_history(i)[-1]
-                    print(box_to_draw)
-                    if box_to_draw[0] > FRAME_WIDTH*0.8 or box_to_draw[0] < FRAME_WIDTH*0.2:
-                        del(tracking.buffer[i])
+                box_to_draw = tracking.box_history(i)[-1]
+                box_to_draw =  tuple(map(lambda v: v//2,box_to_draw)) 
+                print(box_to_draw)
+                detector.draw_bounding_box(frame, [box_to_draw], color_table[id(tracking.buffer[i])])
+                if box_to_draw[0] > FRAME_WIDTH/2*0.8 or box_to_draw[0] < FRAME_WIDTH/2*0.2:
+                    del(tracking.buffer[i])
+                    if i != 0:
                         i -= 1
-                        continue 
-                    detector.draw_bounding_box(frame, [box_to_draw], color_table[id(tracking.buffer[i])])
+                    continue 
+                if len(tracking.box_history(i)) >= FRAME_COUNT_TO_DECIDE:
                     ### recognition phase
-                    if frame_count % FRAME_COUNT_TO_DECIDE == 0:
-                        features = tracking.features_history(i)
-                        ids = recog.recog(features, threshold=0.4)
-                        final_id, frequent = percent_of_majority(ids)
-                        if frequent > 0.5:
-                            t = datetime.now().strftime('%d/%m %H:%M:%S')
-                            time_str = datetime.now().strftime('%d-%m_%H-%M-%S')
-                            evident_path = f'{EVIDENT_ROOT}/{final_id}_{time_str}.jpg'
-                            process_id(final_id, evident_path)
-                            evident_writter.push(frame, evident_path)
-                            record = [t, 'postprocessing', str(tracking.box_history(i)[-1]), final_id, evident_path]
-                            records.append(record)
-                            with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
-                                report.write('\t'.join(record) + '\n')
-                                report.flush()
+                    features = tracking.features_history(i)
+                    ids = recog.recog(features, threshold=0.4)
+                    final_id, frequent = percent_of_majority(ids)
+                    if frequent > 0.5:
+                        t = datetime.now().strftime('%d/%m %H:%M:%S')
+                        time_str = datetime.now().strftime('%d-%m_%H-%M-%S')
+                        if final_id == 'unknown':
+                            sub_path = 'sbuilding/unknown'
+                        else:
+                            sub_path = 'subilding/known'
+                        evident_path = f'{EVIDENT_ROOT}/{sub_path}/{final_id}_{time_str}.jpg'
+                        process_id(final_id, f'{sub_path}/{final_id}_{time_str}.jpg')
+                        evident_writter.push(frame, evident_path)
+                        record = [t, 'postprocessing', str(tracking.box_history(i)[-1]), final_id, evident_path]
+                        records.append(record)
+                        with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
+                            report.write('\t'.join(record) + '\n')
+                            report.flush()
+                        # # Remove the buffer of processed person
+                        # del(tracking.buffer[i])
+                        # if i != 0:
+                        #     i -= 1
                 i += 1
-            total_postprocessing += time() - pp_start
-            print(total_postprocessing/frame_count)
+            execution_time['postprocessing'] = time() - t_temp
+            execution_time['total'] = time() - start_time
+            
+            print(execution_time)
             
             # Show the frame to debug
             cv2.imshow("frame", frame)

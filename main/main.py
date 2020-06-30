@@ -98,7 +98,7 @@ FRAME_COUNT_TO_DECIDE = 7
 # start getting frame from video stream
 cap.start()
 # check video stream
-if not cap.cap.isOpened():
+if not cap.isOpened():
     print('Error in opening camera')
     sys.exit(-1)
 

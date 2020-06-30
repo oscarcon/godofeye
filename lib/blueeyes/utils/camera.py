@@ -1,3 +1,4 @@
+import os
 import cv2
 import queue
 import logging
@@ -8,7 +9,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 class Camera(Thread):
     lock = Lock()
-    def __init__(self, source, frameskip=0):
+    def __init__(self, source, frameskip=1):
         Thread.__init__(self)
         self.cap = cv2.VideoCapture(source)
         self.source = source
@@ -17,9 +18,11 @@ class Camera(Thread):
         self.frameskip = frameskip
         self.img_queue = queue.Queue(maxsize=1)
         self.state = 'run'
-        # self.video_writer = cv2.VideoWriter('result.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (self.frame_width,self.frame_height))
-        # self.get_frame_thread = threading.Thread(target=self._get_frame)
-        # self.get_frame_thread.start()
+        if os.path.exists(source):
+            self.is_video = True
+        else:
+            self.is_video = False
+
     def restart(self):
         self.cap = cv2.VideoCapture(self.source)
         
@@ -29,7 +32,6 @@ class Camera(Thread):
     def isOpened(self):
         return self.cap.isOpened()
     def run(self):
-        ret, frame = None, None
         frame_count = 0
         while self.state == 'run':
             ret, frame = self.cap.read()
@@ -38,10 +40,12 @@ class Camera(Thread):
                     if frame_count > 1000:
                         frame_count = 0
                     try:
-                        self.img_queue.put_nowait(frame)
+                        self.img_queue.put(frame)
                     except queue.Full:
                         pass
                 frame_count += 1
+            elif self.is_video:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     def set(self, parameter, value):
         if self.lock.acquire(False):
