@@ -32,7 +32,7 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
-from blueeyes import config
+from blueeyes.config import *
 from blueeyes.utils import Camera
 from blueeyes.face_recognition import FaceRecognition, face_roi
 from blueeyes.face_detection import FaceDetector
@@ -141,7 +141,8 @@ recog = FaceRecognition(
     model_path='/home/huy/face_recog/models/svm/rbf_c100_12062020_214524.svm'
     # model_path='/home/huy/face_recog/models/svm/rbf_c1000_12062020_181542.svm'
 )
-tracking = Tracking(deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=3)
+# tracking = Tracking(method='feature', deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
+tracking = Tracking(method='distance', deadline=FRAME_HEIGHT*1, threshold=70, max_live_time=10, FRAME_WIDTH=FRAME_WIDTH)
 
 # evident writting thread
 evident_writter = EvidentWritter()
@@ -234,11 +235,6 @@ while True:
                 box_to_draw =  tuple(map(lambda v: v//2,box_to_draw)) 
                 print(box_to_draw)
                 detector.draw_bounding_box(frame, [box_to_draw], color_table[id(tracking.buffer[i])])
-                if box_to_draw[0] > FRAME_WIDTH/2*0.8 or box_to_draw[0] < FRAME_WIDTH/2*0.2:
-                    del(tracking.buffer[i])
-                    if i != 0:
-                        i -= 1
-                    continue 
                 if len(tracking.box_history(i)) >= FRAME_COUNT_TO_DECIDE:
                     ### recognition phase
                     features = tracking.features_history(i)

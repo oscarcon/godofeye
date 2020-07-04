@@ -4,14 +4,29 @@ import cv2
 import time
 import logging
 import numpy as np
-import face_recognition
-import torch
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.path.pardir)))
 
-# set allow_growth for tensorflow
-import tensorflow.compat.v1 as tf
-import tensorflow.keras as keras
+def import_tensorflow():
+    import tensorflow as tf
+    import tensorflow.compat.v1 as tf
+    import tensorflow.keras as keras
+    from tensorflow.compat.v1.keras.backend import set_session
+
+    # set allow_growth for tensorflow
+    oldinit = tf.Session.__init__
+    def new_tfinit(session, target='', graph=None, config=None):
+        print("Set config.gpu_options.allow_growth to True")
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        oldinit(session, target, graph, config)
+    tf.Session.__init__ = new_tfinit
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
+    config.log_device_placement = True  # to log device placement (on which device the operation ran)
+    sess = tf.Session(config=config)
+    set_session(sess)
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -25,6 +40,7 @@ class FaceDetector:
         elif self.type == 'haar':
             self.face_detector = cv2.CascadeClassifier('cascade_model/cascade_ignore_shirt.xml')
         elif self.type == 'mtcnn':
+            import_tensorflow()
             from mtcnn import MTCNN
             kwargs['min_face_size'] //= self.scale
             self.min_face_size = kwargs['min_face_size']
@@ -37,6 +53,7 @@ class FaceDetector:
             from facenet_pytorch import MTCNN
             self.face_detector = MTCNN(image_size=150, select_largest=False, keep_all=True, post_process=False, margin=40, device='cuda')
         elif self.type == 'faceboxes':
+            import torch
             import faceboxes_package as fb
             torch.set_grad_enabled(False)
             # net and model
@@ -78,6 +95,7 @@ class FaceDetector:
             boxes = self.face_detector.detect(frame)
             boxes = [(y1,x1,y2,x2) for x1,y1,x2,y2 in boxes]
         elif self.type == 'hog':
+            import face_recognition
             boxes = face_recognition.face_locations(frame, number_of_times_to_upsample=1)
             # boxes format: css (top, right, bottom, left)
             boxes = [(y1, x1, y2, x2) for x1, y1, x2, y2 in boxes]
@@ -103,6 +121,7 @@ class FaceDetector:
                     box = tuple(map(int, box))
                     boxes.append(box)
         elif self.type == 'faceboxes':
+            import torch
             import faceboxes_package as fb
             from faceboxes_package.data.config import cfg
             from faceboxes_package.config import model_cfg
