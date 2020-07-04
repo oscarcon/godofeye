@@ -32,7 +32,7 @@ def new_tfinit(session, target='', graph=None, config=None):
     oldinit(session, target, graph, config)
 tf.Session.__init__ = new_tfinit
 
-from blueeyes.config import *
+from blueeyes import config
 from blueeyes.utils import Camera
 from blueeyes.face_recognition import FaceRecognition, face_roi
 from blueeyes.face_detection import FaceDetector
@@ -104,8 +104,7 @@ def process_id(result_id, evident_path):
 
 # Run MQTT client
 mqtt_client = mqtt.Client()
-# mqtt_client.connect('10.10.46.160', 1883, 60)
-mqtt_client.connect('localhost', 1883, 60)
+mqtt_client.connect(MQTT_BROKER, 1883, 60)
 mqtt_client.loop_start()
 
 # cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
