@@ -1,0 +1,5 @@
+Each row of "anno" corresponds to an image. 
+1st column is image name; 
+2nd column contains bounding boxes of faces [x1, y1; x2, y2]; 
+3rd column is pose [yaw, pitch, roll]. We only evaluate on yaw; 
+4th column contains 6 landmarks.
