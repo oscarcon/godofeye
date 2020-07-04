@@ -107,9 +107,9 @@ mqtt_client = mqtt.Client()
 mqtt_client.connect(MQTT_BROKER, 1883, 60)
 mqtt_client.loop_start()
 
-# cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
-# cap = Camera(source=cap_source, frameskip=10)
-cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=1)
+cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
+cap = Camera(source=cap_source, frameskip=10)
+# cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=1)
 # cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
