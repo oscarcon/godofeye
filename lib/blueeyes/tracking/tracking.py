@@ -24,6 +24,9 @@ class Object:
         return x
     def live_time(self):
         return time.time() - self.time
+    def clear_except_last(self):
+        self.bounding_boxes = [self.bounding_boxes[-1]]
+        self.features = [self.features[-1]]
     
 class Tracking:
     def __init__(self, method, deadline = 400, threshold = 0.5, max_live_time = 10, **kwargs):
