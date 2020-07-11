@@ -11,19 +11,25 @@ import threading
 import numpy as np
 
 class Object:
-    def __init__(self, box, feature):
+    def __init__(self, box, feature, face_img):
         self.time = time.time()
         self.bounding_boxes = [box]
         self.features = [feature]
-    def insert_box_feature(self, box, feature):
+        self.prediction = []
+        self.face_imgs = [face_img]
+    def insert(self, box, feature, face_img):
         self.bounding_boxes.append(box)
         self.features.append(feature)
+        self.face_imgs.append(face_img)
     def get_location(self):
         box = self.bounding_boxes[-1]
         x = (box[1]+box[3])/2
         return x
     def live_time(self):
         return time.time() - self.time
+    def clear_except_last(self):
+        self.bounding_boxes = [self.bounding_boxes[-1]]
+        self.features = [self.features[-1]]
     
 class Tracking:
     def __init__(self, method, deadline = 400, threshold = 0.5, max_live_time = 10, **kwargs):
@@ -36,8 +42,8 @@ class Tracking:
     def push(self, faces_info):
         if not self.buffer:
             for info in faces_info:
-                box, feature = info
-                self.buffer.append(Object(box, feature))
+                box, feature, face_img = info
+                self.buffer.append(Object(box, feature, face_img))
         else:
             for info in faces_info:
                 self._asign_to_obj(info)
@@ -54,6 +60,11 @@ class Tracking:
     def box_history(self, i):
         if i < self.count():
             return self.buffer[i].bounding_boxes
+        else:
+            return None
+    def face_img_history(self, i):
+        if i < self.count():
+            return self.buffer[i].face_imgs
         else:
             return None
     def clear(self):
@@ -80,11 +91,11 @@ class Tracking:
     def _asign_to_obj(self, face_info):
         if self.method == 'feature':
             last_features = np.array([obj.features[-1] for obj in self.buffer])
-            box, feature = face_info
+            box, feature, face_img = face_info
             prepare_list = np.repeat([feature], len(last_features), axis=0)
             distances = np.linalg.norm(prepare_list-last_features, axis=1)
             if np.min(distances) < self.threshold:
-                self.buffer[np.argmin(distances)].insert_box_feature(box, feature)
+                self.buffer[np.argmin(distances)].insert(box, feature, face_img)
             else:
                 self.buffer.append(Object(box, feature))
         if self.method == 'distance':

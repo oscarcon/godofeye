@@ -1,0 +1,3 @@
+[submodule "Emotion-master"]
+	path = Emotion-master
+	url = https://github.com/letiennhat/Emotion-master.git

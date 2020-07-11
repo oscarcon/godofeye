@@ -9,13 +9,16 @@ logging.basicConfig(level=logging.DEBUG)
 
 class Camera(Thread):
     lock = Lock()
-    def __init__(self, source, frameskip=1):
+    def __init__(self, source, frameskip=1, crop=(0.1, 0, 0, 0)):
         Thread.__init__(self)
         self.cap = cv2.VideoCapture(source)
         self.source = source
-        self.frame_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        self.frame_height = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.source_frame_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH) 
+        self.source_frame_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.frame_width = int(self.source_frame_width*(1 - crop[1]+crop[3]))
+        self.frame_height = int(self.source_frame_height*(1 - crop[0]+crop[2]))
         self.frameskip = frameskip
+        self.crop = crop
         self.img_queue = queue.Queue(maxsize=1)
         self.state = 'run'
         if os.path.exists(source):
@@ -27,6 +30,10 @@ class Camera(Thread):
         self.cap = cv2.VideoCapture(self.source)
         
     def get(self, param):
+        if param == cv2.CAP_PROP_FRAME_WIDTH:
+            return self.frame_width
+        if param == cv2.CAP_PROP_FRAME_HEIGHT:
+            return self.frame_height
         return self.cap.get(param)
 
     def isOpened(self):
@@ -39,8 +46,13 @@ class Camera(Thread):
                 if frame_count % self.frameskip == 0:
                     if frame_count > 1000:
                         frame_count = 0
+                    h1 = int(self.crop[0]*self.source_frame_height)
+                    h2 = int((1-self.crop[2])*self.source_frame_height)
+                    w1 = int(self.crop[3]*self.source_frame_width)
+                    w2 = int((1-self.crop[1])*self.source_frame_width)
+                    frame = frame[h1:h2, w1:w2]
                     try:
-                        self.img_queue.put(frame)
+                        self.img_queue.put_nowait(frame)
                     except queue.Full:
                         pass
                 frame_count += 1

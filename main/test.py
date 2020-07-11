@@ -14,8 +14,11 @@ import multiprocessing
 import signal
 import subprocess
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 if len(sys.argv) < 2:
-    print('Not enough argument for script')
+    logging.debug('Not enough argument for script')
     sys.exit(-1)
 
 sys.path.append('../lib')
@@ -26,7 +29,7 @@ import tensorflow.keras as keras
 # allow gpu memory growth 
 oldinit = tf.Session.__init__
 def new_tfinit(session, target='', graph=None, config=None):
-    print("Set config.gpu_options.allow_growth to True")
+    logging.debug("Set config.gpu_options.allow_growth to True")
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     oldinit(session, target, graph, config)
@@ -65,7 +68,7 @@ class EvidentWritter:
 #         self.state = 'run'
 #         signal.signal(signal.SIGUSR1, self._signal_handler)
 #     def _signal_handler(self, signum, frame):
-#         print('VideoWritter received signal')
+#         logging.debug('VideoWritter received signal')
 #         sys.stdout.flush()
 #         if signum == signal.SIGUSR1:
 #             self.state = 'stop'
@@ -75,7 +78,7 @@ class EvidentWritter:
 #             if ret:
 #                 frame = cv2.resize(frame, (800,600))
 #                 self.video_writter.write(frame)
-#         print('Writer exited')
+#         logging.debug('Writer exited')
 #         self.video_writter.release()
 #         self.cap.release()
 
@@ -93,14 +96,16 @@ def percent_of_majority(lst):
     max_count = max(values)
     return keys[values.index(max_count)], max_count/len(lst)
 
-def process_id(result_id, evident_path):
+def process_id(result_id, emotion, evident_path, postprocessing):
     recog_report = {
         'id': result_id.replace('\n', ''), 
+        'emotion': emotion,
         'time': time(),
-        'evident_path': evident_path
+        'evident_path': evident_path,
+        'postprocessing': postprocessing
     }
     mqtt_client.publish('/ids', json.dumps(recog_report))
-    print(result_id)
+    logging.debug(result_id)
 
 # Run MQTT client
 mqtt_client = mqtt.Client()
@@ -108,8 +113,8 @@ mqtt_client.connect(MQTT_BROKER, 1883, 60)
 mqtt_client.loop_start()
 
 cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
-cap = Camera(source=cap_source, frameskip=10)
-# cap = Camera(source='/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4', frameskip=1)
+cap = Camera(source=cap_source, frameskip=3)
+#cap = Camera(source='/home/blueeyes1/clip.mp4', frameskip=3)
 # cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
@@ -129,7 +134,7 @@ cap.start()
 
 # check video stream
 if not cap.isOpened():
-    print('Error in opening camera')
+    logging.debug('Error in opening camera')
     sys.exit(-1)
 
 # Init core modules: detection, recoginition and tracking
@@ -138,11 +143,11 @@ detector = FaceDetector('faceboxes', min_face_size=70, scale=SCALE, threshold=0.
 recog = FaceRecognition(
     feature_extractor_type='dlib',
     classifier_method='svm',
-    model_path='/home/huy/face_recog/models/svm/rbf_c100_12062020_214524.svm'
+    model_path=SVM_MODEL_PATH
     # model_path='/home/huy/face_recog/models/svm/rbf_c1000_12062020_181542.svm'
 )
 # tracking = Tracking(method='feature', deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
-tracking = Tracking(method='distance', deadline=FRAME_HEIGHT*1, threshold=70, max_live_time=10, FRAME_WIDTH=FRAME_WIDTH)
+tracking = Tracking(method='feature', deadline=FRAME_HEIGHT*1, threshold=70, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
 
 # evident writting thread
 evident_writter = EvidentWritter()
@@ -172,9 +177,10 @@ while True:
             wdt.notify()
 
             start_time = time()
-            print('Got frame')
+            logging.debug('Got frame')
             frame_count += 1
-            frame = cv2.resize(origin_frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_LINEAR)
+            if SHOW_FRAME:
+                frame = cv2.resize(origin_frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_LINEAR)
 
             # detect face(s) in frame
             boxes = detector.detect(origin_frame)
@@ -190,8 +196,8 @@ while True:
                     if 75 < brightness < 225:
                         temp_boxes.append(box)
                 except:
-                    print(box)
-                    print(origin_frame.shape)
+                    logging.debug(box)
+                    logging.debug(origin_frame.shape)
                     # input()
             
             t_temp = time()
@@ -200,31 +206,39 @@ while True:
             face_imgs = []
             for box in boxes:
                 face_imgs.append(face_roi(origin_frame, box))
-            features = recog.extract_feature(face_imgs)
+                
+            features = recog.extract_feature(face_imgs) #Face - feature
+            
+            import Emotion_master.feature_extraction as feature_emotion
+            if len(face_imgs) != 0:
+                print(np.asarray(face_imgs).shape)
+                emotions_text = feature_emotion.feature_extraction(boxes,origin_frame)
+                print(emotions_text)
+
             execution_time['extraction'] = time() - t_temp
 
             # send features face location to tracking module for later processing
             for i,box in enumerate(boxes):
-                tracking.push([(box, features[i])])
+                tracking.push([(box, features[i], face_imgs[i])])
             
             t_temp = time()
-            # predict every frame
-            if features:
-                predict_ids = recog.recog(features, threshold=0.4)
-                t = datetime.now().strftime('%d/%m %H:%M:%S')
-                for i, predict_id in enumerate(predict_ids):
-                    record = [t, 'frame', str(boxes[i]), predict_id, '']
-                    records.append(record)
-                    with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
-                        report.write('\t'.join(record) + '\n')
-                        report.flush()
+            # # predict every frame
+            # if features:
+            #     predict_ids = recog.recog(features, threshold=0.4)
+            #     t = datetime.now().strftime('%d/%m %H:%M:%S')
+            #     for i, predict_id in enumerate(predict_ids):
+            #         record = [t, 'frame', str(boxes[i]), predict_id, '']
+            #         records.append(record)
+            #         with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
+            #             report.write('\t'.join(record) + '\n')
+            #             report.flush()
             execution_time['recognition'] = time() - t_temp
 
             # post-processing with the support of tracking module
             t_temp = time()
             if frame_count % 5 == 0:
                 tracking._check_buffer_status()
-                print(tracking.count())                            
+                logging.debug(tracking.count())                            
             i = 0 
             while i < tracking.count():
                 if id(tracking.buffer[i]) not in color_table:
@@ -233,44 +247,63 @@ while True:
                     color_table[id(tracking.buffer[i])] = color
                 box_to_draw = tracking.box_history(i)[-1]
                 box_to_draw =  tuple(map(lambda v: v//2,box_to_draw)) 
-                print(box_to_draw)
-                detector.draw_bounding_box(frame, [box_to_draw], color_table[id(tracking.buffer[i])])
+                logging.debug(box_to_draw)
+                if SHOW_FRAME:
+                    detector.draw_bounding_box(frame, [box_to_draw], color_table[id(tracking.buffer[i])])
                 if len(tracking.box_history(i)) >= FRAME_COUNT_TO_DECIDE:
                     ### recognition phase
                     features = tracking.features_history(i)
                     ids = recog.recog(features, threshold=0.4)
                     final_id, frequent = percent_of_majority(ids)
-                    if frequent > 0.5:
-                        t = datetime.now().strftime('%d/%m %H:%M:%S')
-                        time_str = datetime.now().strftime('%d-%m_%H-%M-%S')
-                        if final_id == 'unknown':
-                            sub_path = 'sbuilding/unknown'
-                        else:
-                            sub_path = 'subilding/known'
-                        evident_path = f'{EVIDENT_ROOT}/{sub_path}/{final_id}_{time_str}.jpg'
-                        process_id(final_id, f'{sub_path}/{final_id}_{time_str}.jpg')
-                        evident_writter.push(frame, evident_path)
+                    t = datetime.now().strftime('%d/%m %H:%M:%S')
+                    time_str = datetime.now().strftime('%d-%m_%H-%M-%S')    
+                    if final_id == 'unknown':
+                        sub_path = 'sbuilding/unknown'
+                    else:
+                        if not os.path.exists(f'{EVIDENT_ROOT}/sbuilding/known/{final_id}'):
+                            os.makedirs(f'{EVIDENT_ROOT}/sbuilding/known/{final_id}')
+                        sub_path = f'sbuilding/known/{final_id}'
+                    
+                    evident_path = f'{EVIDENT_ROOT}/{sub_path}/{final_id}_{time_str}.jpg'
+                    pp_folder = f'{EVIDENT_ROOT}/{sub_path}/{time_str}' 
+                    if not os.path.exists(pp_folder):
+                        os.makedirs(pp_folder)
+                    
+                    for index, predict_id in enumerate(ids):
+                        record = [t, 'frame', str(tracking.box_history(i)[index]), predict_id, '']
+                        records.append(record)
+                        with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
+                            report.write('\t'.join(record) + '\n')
+                            report.flush()
+
+                    file_id = 0
+                    for (prediction, face) in zip(ids, tracking.face_img_history(i)):
+                        cv2.imwrite(f'{pp_folder}/{file_id}_{prediction}.jpg', face)
+                        file_id += 1
+                    
+                    if frequent > 0.4:
+                        process_id(final_id, emotions_text, pp_folder, f'{sub_path}/{final_id}_{time_str}.jpg')
+                        evident_writter.push(origin_frame, evident_path)
                         record = [t, 'postprocessing', str(tracking.box_history(i)[-1]), final_id, evident_path]
                         records.append(record)
                         with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
                             report.write('\t'.join(record) + '\n')
                             report.flush()
-                        # # Remove the buffer of processed person
-                        # del(tracking.buffer[i])
-                        # if i != 0:
-                        #     i -= 1
+                    # Clear the data in the buffer of processed person except the last one
+                    tracking.buffer[i].clear_except_last()
                 i += 1
             execution_time['postprocessing'] = time() - t_temp
             execution_time['total'] = time() - start_time
             
-            print(execution_time)
+            logging.debug(execution_time)
             
             # Show the frame to debug
-            cv2.imshow("frame", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            if SHOW_FRAME:
+                cv2.imshow("frame", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
     except KeyboardInterrupt:
-        print('Finalizing...')
+        logging.debug('Finalizing...')
         cap.stop()
         evident_writter.wait()
         video_writter_process.send_signal(signal.SIGUSR1)

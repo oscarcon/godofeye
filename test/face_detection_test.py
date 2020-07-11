@@ -30,9 +30,9 @@ tf.Session.__init__ = new_tfinit
 from blueeyes.face_detection import FaceDetector
 
 SCALE = 2
-detector = FaceDetector('faceboxes', min_face_size=70, scale=SCALE, threshold=0.3)
+detector = FaceDetector('faceboxes', min_face_size=70, scale=SCALE, threshold=0.5)
 
-cap = cv2.VideoCapture('/home/huy/Downloads/3_nguoi_trucdien_DatHuyNhat.mp4')
+cap = cv2.VideoCapture('/home/blueeyes1/Downloads/hiv01288 00_00_20-00_00_30.mp4')
 
 total_time = 0
 frame_count = 0
@@ -41,18 +41,21 @@ while True:
     # Read frame and frame available flag (ret)
     ret, origin_frame = cap.read()
     if ret:
-        frame = cv2.resize(origin_frame, (0,0), fx=1/2,fy=1/2, interpolation=cv2.INTER_LINEAR)
+        # frame = cv2.normalize(origin_frame, None, 0, 255, cv2.NORM_MINMAX)
+        # frame = cv2.GaussianBlur(origin_frame, (15,15), 0)
+        # cv2.addWeighted(origin_frame, 1.7, frame, -0.5, 0, frame)
+        frame = cv2.resize(origin_frame, (0,0), fx=1/2, fy=1/2, interpolation=cv2.INTER_LINEAR)
 
         t = time()
         # detect face(s) in frame
         boxes = detector.detect(origin_frame)
         processing_t = time() - t
         print('FPS:', 1/processing_t)
-        boxes = [tuple(map(lambda v: v//(2*SCALE), box)) for box in boxes]
+        boxes = [tuple(map(lambda v: v//(SCALE), box)) for box in boxes]
         print(boxes)
         detector.draw_bounding_box(frame, boxes, (255,0,0))
         
         # Show the frame to debug
         cv2.imshow("frame", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(0) & 0xFF == ord('q'):
             break
