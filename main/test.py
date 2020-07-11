@@ -96,11 +96,13 @@ def percent_of_majority(lst):
     max_count = max(values)
     return keys[values.index(max_count)], max_count/len(lst)
 
-def process_id(result_id, evident_path):
+def process_id(result_id, emotion, evident_path, postprocessing):
     recog_report = {
         'id': result_id.replace('\n', ''), 
+        'emotion': emotion,
         'time': time(),
-        'evident_path': evident_path
+        'evident_path': evident_path,
+        'postprocessing': postprocessing
     }
     mqtt_client.publish('/ids', json.dumps(recog_report))
     logging.debug(result_id)
@@ -111,8 +113,8 @@ mqtt_client.connect(MQTT_BROKER, 1883, 60)
 mqtt_client.loop_start()
 
 cap_source = 'rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101'
-# cap = Camera(source=cap_source, frameskip=1)
-cap = Camera(source='/home/blueeyes1/clip.mp4', frameskip=3)
+cap = Camera(source=cap_source, frameskip=3)
+#cap = Camera(source='/home/blueeyes1/clip.mp4', frameskip=3)
 # cap = Camera(source='/home/huy/Downloads/Tung_nguoi_di_vao1.mp4', frameskip=0)
 # cap = Camera(source='rtsp://admin:be123456@10.10.46.224:554/Streaming/Channels/101', frameskip=5)
 # cap = Camera(source=f'/home/huy/Downloads/{sys.argv[1]}.mp4', frameskip=0)
@@ -145,7 +147,7 @@ recog = FaceRecognition(
     # model_path='/home/huy/face_recog/models/svm/rbf_c1000_12062020_181542.svm'
 )
 # tracking = Tracking(method='feature', deadline=FRAME_HEIGHT*0.7, threshold=0.475, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
-tracking = Tracking(method='distance', deadline=FRAME_HEIGHT*1, threshold=70, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
+tracking = Tracking(method='feature', deadline=FRAME_HEIGHT*1, threshold=70, max_live_time=3, FRAME_WIDTH=FRAME_WIDTH)
 
 # evident writting thread
 evident_writter = EvidentWritter()
@@ -204,24 +206,32 @@ while True:
             face_imgs = []
             for box in boxes:
                 face_imgs.append(face_roi(origin_frame, box))
-            features = recog.extract_feature(face_imgs)
+                
+            features = recog.extract_feature(face_imgs) #Face - feature
+            
+            import Emotion_master.feature_extraction as feature_emotion
+            if len(face_imgs) != 0:
+                print(np.asarray(face_imgs).shape)
+                emotions_text = feature_emotion.feature_extraction(boxes,origin_frame)
+                print(emotions_text)
+
             execution_time['extraction'] = time() - t_temp
 
             # send features face location to tracking module for later processing
             for i,box in enumerate(boxes):
-                tracking.push([(box, features[i])])
+                tracking.push([(box, features[i], face_imgs[i])])
             
             t_temp = time()
-            # predict every frame
-            if features:
-                predict_ids = recog.recog(features, threshold=0.4)
-                t = datetime.now().strftime('%d/%m %H:%M:%S')
-                for i, predict_id in enumerate(predict_ids):
-                    record = [t, 'frame', str(boxes[i]), predict_id, '']
-                    records.append(record)
-                    with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
-                        report.write('\t'.join(record) + '\n')
-                        report.flush()
+            # # predict every frame
+            # if features:
+            #     predict_ids = recog.recog(features, threshold=0.4)
+            #     t = datetime.now().strftime('%d/%m %H:%M:%S')
+            #     for i, predict_id in enumerate(predict_ids):
+            #         record = [t, 'frame', str(boxes[i]), predict_id, '']
+            #         records.append(record)
+            #         with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
+            #             report.write('\t'.join(record) + '\n')
+            #             report.flush()
             execution_time['recognition'] = time() - t_temp
 
             # post-processing with the support of tracking module
@@ -245,15 +255,34 @@ while True:
                     features = tracking.features_history(i)
                     ids = recog.recog(features, threshold=0.4)
                     final_id, frequent = percent_of_majority(ids)
-                    if frequent > 0.5:
-                        t = datetime.now().strftime('%d/%m %H:%M:%S')
-                        time_str = datetime.now().strftime('%d-%m_%H-%M-%S')
-                        if final_id == 'unknown':
-                            sub_path = 'sbuilding/unknown'
-                        else:
-                            sub_path = 'subilding/known'
-                        evident_path = f'{EVIDENT_ROOT}/{sub_path}/{final_id}_{time_str}.jpg'
-                        process_id(final_id, f'{sub_path}/{final_id}_{time_str}.jpg')
+                    t = datetime.now().strftime('%d/%m %H:%M:%S')
+                    time_str = datetime.now().strftime('%d-%m_%H-%M-%S')    
+                    if final_id == 'unknown':
+                        sub_path = 'sbuilding/unknown'
+                    else:
+                        if not os.path.exists(f'{EVIDENT_ROOT}/sbuilding/known/{final_id}'):
+                            os.makedirs(f'{EVIDENT_ROOT}/sbuilding/known/{final_id}')
+                        sub_path = f'sbuilding/known/{final_id}'
+                    
+                    evident_path = f'{EVIDENT_ROOT}/{sub_path}/{final_id}_{time_str}.jpg'
+                    pp_folder = f'{EVIDENT_ROOT}/{sub_path}/{time_str}' 
+                    if not os.path.exists(pp_folder):
+                        os.makedirs(pp_folder)
+                    
+                    for index, predict_id in enumerate(ids):
+                        record = [t, 'frame', str(tracking.box_history(i)[index]), predict_id, '']
+                        records.append(record)
+                        with open(f'report{sys.argv[1]}.csv', 'a+', buffering=1) as report:
+                            report.write('\t'.join(record) + '\n')
+                            report.flush()
+
+                    file_id = 0
+                    for (prediction, face) in zip(ids, tracking.face_img_history(i)):
+                        cv2.imwrite(f'{pp_folder}/{file_id}_{prediction}.jpg', face)
+                        file_id += 1
+                    
+                    if frequent > 0.4:
+                        process_id(final_id, emotions_text, pp_folder, f'{sub_path}/{final_id}_{time_str}.jpg')
                         evident_writter.push(origin_frame, evident_path)
                         record = [t, 'postprocessing', str(tracking.box_history(i)[-1]), final_id, evident_path]
                         records.append(record)
