@@ -343,6 +343,7 @@ class FaceRecognition:
             result = self._svm_recog(features, **kwargs)
         else:
             result = self._distance_recog(features, **kwargs)
+        result = [r.split('_')[0] for r in result]
         return result 
 
     def put_to_result_buffer(self, boxes, labels):
